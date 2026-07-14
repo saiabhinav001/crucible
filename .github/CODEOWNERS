@@ -1,0 +1,10 @@
+# Protected paths (master plan §14.2). Replace OWNER with the GitHub handle
+# once the repository is hosted; branch protection + required review make
+# these lines effective.
+#
+# *                      @OWNER
+# /.github/workflows/    @OWNER
+# /infra/                @OWNER
+# /evals/                @OWNER
+# /docs/security/        @OWNER
+# /packages/db/alembic/  @OWNER

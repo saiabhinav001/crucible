@@ -1,0 +1,92 @@
+# PR validation lane: fast, deterministic, no production secrets.
+# NOTE(P9/R11): third-party actions are tag-pinned in Phase 1; full commit-SHA
+# pinning is a scheduled Phase 9 hardening task before any deploy workflow
+# holds credentials.
+
+name: pr-validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync workspace (frozen lockfile)
+        run: uv sync --dev --frozen
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run mypy
+      - name: Import boundary contracts (ADR-001)
+        run: uv run lint-imports
+      - name: Unit tests
+        run: uv run pytest -m "not integration"
+      - name: Migration offline SQL check
+        run: uv run alembic -c packages/db/alembic.ini upgrade head --sql
+      - name: Seed-suite reference calculators
+        run: uv run python evals/references/run_all.py
+
+  python-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: crucible
+          POSTGRES_PASSWORD: crucible
+          POSTGRES_DB: crucible
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crucible -d crucible"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://crucible:crucible@localhost:5432/crucible
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev --frozen
+      - name: Integration tests (live Postgres/Redis)
+        run: uv run pytest -m integration
+
+  web-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web typecheck
+      - run: pnpm --filter web build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API/worker image reproducibly from uv.lock
+        run: docker build -f infra/docker/python.Dockerfile --target api --build-arg GIT_SHA=${{ github.sha }} .

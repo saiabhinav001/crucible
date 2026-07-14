@@ -1,0 +1,110 @@
+[project]
+name = "crucible-workspace"
+version = "0.1.0"
+description = "Crucible monorepo workspace root (virtual; see packages/ and apps/)"
+requires-python = ">=3.12"
+dependencies = [
+    "crucible-domain",
+    "crucible-application",
+    "crucible-db",
+    "crucible-api",
+    "crucible-worker",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+    "pre-commit>=4.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/domain",
+    "packages/application",
+    "packages/db",
+    "apps/api",
+    "apps/worker",
+]
+
+[tool.uv.sources]
+crucible-domain = { workspace = true }
+crucible-application = { workspace = true }
+crucible-db = { workspace = true }
+crucible-api = { workspace = true }
+crucible-worker = { workspace = true }
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["packages/*/src", "apps/*/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "T20"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T20"]
+"evals/references/**" = ["T20"]  # reference calculators intentionally print
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["packages", "apps"]
+mypy_path = ["packages/domain/src", "packages/application/src", "packages/db/src", "apps/api/src", "apps/worker/src"]
+explicit_package_bases = true
+namespace_packages = true
+exclude = ["alembic"]
+
+[[tool.mypy.overrides]]
+module = ["arq.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: requires live Postgres/Redis (deselect with -m 'not integration')",
+]
+addopts = "-q"
+
+# ---------------------------------------------------- import boundaries
+# ADR-001 boundary rules, enforced: domain imports nothing but stdlib;
+# application imports only domain + stdlib. Run: uv run lint-imports
+[tool.importlinter]
+root_packages = ["crucible", "crucible_api", "crucible_worker"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain is pure (no frameworks, no other layers)"
+type = "forbidden"
+source_modules = ["crucible.domain"]
+forbidden_modules = [
+    "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
+    "alembic", "redis", "arq", "httpx",
+    "crucible.application", "crucible.db", "crucible_api", "crucible_worker",
+]
+
+[[tool.importlinter.contracts]]
+name = "application depends only on domain"
+type = "forbidden"
+source_modules = ["crucible.application"]
+forbidden_modules = [
+    "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
+    "alembic", "redis", "arq", "httpx",
+    "crucible.db", "crucible_api", "crucible_worker",
+]
+
+[[tool.importlinter.contracts]]
+name = "db layer does not import transport apps"
+type = "forbidden"
+source_modules = ["crucible.db"]
+forbidden_modules = ["fastapi", "starlette", "crucible_api", "crucible_worker"]

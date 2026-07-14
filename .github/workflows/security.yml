@@ -1,0 +1,35 @@
+# Security lane: secret scan + dependency audit. Deeper scanning (CodeQL,
+# Semgrep, Trivy, SBOM/provenance) lands in Phase 9 per the master plan §14.
+
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1" # weekly Monday 03:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so leaked-then-removed secrets are caught
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Export locked requirements and audit
+        run: |
+          uv export --no-dev --no-emit-workspace --format requirements-txt > /tmp/requirements.txt
+          uvx pip-audit --strict -r /tmp/requirements.txt
