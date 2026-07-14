@@ -17,8 +17,13 @@ uv sync --dev                # creates .venv from uv.lock (reproducible)
 uv run pre-commit install
 pnpm install
 cp .env.example .env         # local defaults; never put real secrets here
-docker compose up -d         # postgres, redis, minio, otel-collector
+docker compose up -d         # postgres, redis, minio, otel-collector, api, worker
 uv run alembic -c packages/db/alembic.ini upgrade head
+
+# There is no self-service signup. Create the first org and API key:
+uv run python scripts/bootstrap_org.py --slug demo --name "Demo Org"
+# -> prints the token ONCE. Put it in apps/web/.env.local as CRUCIBLE_API_KEY
+#    if you want the dashboard to show data.
 ```
 
 ## The one command (Phase 1 Definition of Done)

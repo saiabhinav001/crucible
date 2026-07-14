@@ -41,11 +41,39 @@ def test_upgrade_head_on_live_database() -> None:
     engine = sa.create_engine(DATABASE_URL)
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
-        assert version == "0001"
+        assert version == "0002"
         ext = conn.execute(
             sa.text("SELECT count(*) FROM pg_extension WHERE extname = 'vector'")
         ).scalar()
         assert ext == 1
+
+        # The Phase 2 data plane exists and is tenant-scoped.
+        tables = {
+            r[0]
+            for r in conn.execute(
+                sa.text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            )
+        }
+        assert {
+            "organizations",
+            "users",
+            "memberships",
+            "api_keys",
+            "datasets",
+            "dataset_versions",
+            "agent_runs",
+            "run_events",
+            "audit_events",
+        } <= tables
+
+        # Content is identity: the same bytes cannot become two versions.
+        constraint = conn.execute(
+            sa.text(
+                "SELECT count(*) FROM pg_constraint "
+                "WHERE conname = 'uq_dataset_versions_dataset_id'"
+            )
+        ).scalar()
+        assert constraint == 1
 
 
 @requires_pg

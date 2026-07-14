@@ -84,9 +84,17 @@ export default function Home() {
         )}
       </section>
 
-      <p style={{ color: "#8b949e", fontSize: "0.85rem", marginTop: "2rem" }}>
-        API docs: <a style={{ color: "#58a6ff" }} href={`${API_URL}/docs`}>{API_URL}/docs</a>
-      </p>
+      <nav style={{ marginTop: "2rem", display: "flex", gap: "1.25rem" }}>
+        <a style={{ color: "#58a6ff" }} href="/datasets">
+          Datasets
+        </a>
+        <a style={{ color: "#58a6ff" }} href="/runs">
+          Runs
+        </a>
+        <a style={{ color: "#58a6ff" }} href={`${API_URL}/docs`}>
+          API docs
+        </a>
+      </nav>
     </main>
   );
 }

@@ -34,4 +34,7 @@ def test_single_head_revision() -> None:
 
     script = ScriptDirectory.from_config(_alembic_config())
     heads = script.get_heads()
-    assert heads == ["0001"], f"expected a single linear head, got {heads}"
+    # A branched history means two migrations claim the same parent, which
+    # `alembic upgrade head` cannot resolve. Keep the line linear.
+    assert len(heads) == 1, f"expected a single linear head, got {heads}"
+    assert heads == ["0002"]

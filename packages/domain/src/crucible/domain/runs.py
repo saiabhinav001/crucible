@@ -1,4 +1,4 @@
-"""Run lifecycle states and the frozen failure taxonomy.
+"""Run lifecycle: state machine, event types, and the frozen failure taxonomy.
 
 The taxonomy mirrors docs/evaluation/failure-taxonomy.md v0.1.0. Adding a
 category is a reviewed governance change, and both places change together.
@@ -35,6 +35,47 @@ TERMINAL_RUN_STATES: frozenset[RunStatus] = frozenset(
     }
 )
 
+ACTIVE_RUN_STATES: frozenset[RunStatus] = frozenset(
+    {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING_REVIEW}
+)
+
+# Every legal transition, exhaustively. Anything absent is a bug, not a
+# judgement call — the worker and API both check this before writing.
+_ALLOWED: dict[RunStatus, frozenset[RunStatus]] = {
+    RunStatus.QUEUED: frozenset({RunStatus.RUNNING, RunStatus.CANCELLED, RunStatus.POLICY_DENIED}),
+    RunStatus.RUNNING: frozenset(
+        {
+            RunStatus.WAITING_REVIEW,
+            RunStatus.ANSWERED,
+            RunStatus.ABSTAINED,
+            RunStatus.NEEDS_HUMAN_REVIEW,
+            RunStatus.POLICY_DENIED,
+            RunStatus.BUDGET_EXHAUSTED,
+            RunStatus.CANCELLED,
+        }
+    ),
+    RunStatus.WAITING_REVIEW: frozenset(
+        {RunStatus.RUNNING, RunStatus.ANSWERED, RunStatus.ABSTAINED, RunStatus.CANCELLED}
+    ),
+}
+
+
+def can_transition(current: RunStatus, target: RunStatus) -> bool:
+    if current in TERMINAL_RUN_STATES:
+        return False  # terminal is terminal; history is never rewritten
+    return target in _ALLOWED.get(current, frozenset())
+
+
+class RunEventType(StrEnum):
+    """Append-only run history; also what the SSE stream replays."""
+
+    CREATED = "created"
+    CLAIMED = "claimed"
+    STATUS_CHANGED = "status_changed"
+    PROGRESS = "progress"
+    CANCEL_REQUESTED = "cancel_requested"
+    TERMINAL = "terminal"
+
 
 class FailureCategory(StrEnum):
     """Frozen failure taxonomy v0.1.0 (docs/evaluation/failure-taxonomy.md)."""
@@ -57,3 +98,6 @@ class FailureCategory(StrEnum):
     MODEL_PROVIDER_ERROR = "MODEL_PROVIDER_ERROR"
     BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
     HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
+
+
+MAX_QUESTION_CHARS = 2000

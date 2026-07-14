@@ -10,30 +10,37 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 1 complete (repository foundation + reproducible local platform)
+## Status: Phase 2 complete (identity, dataset ingestion, durable data plane)
 
-Phase 0 defined the workload, threat boundary, and metric contract; Phase 1 delivers
-the deterministic developer platform (see the [backlog](docs/product/backlog.md) for
-the six-month plan).
+Phase 0 defined the workload, threat boundary, and metric contract. Phase 1 built the
+reproducible platform. Phase 2 adds the tenant and data foundation — everything the
+agent will need, built *before* an LLM is allowed anywhere near the data.
 
 ```bash
-uv sync --dev && docker compose up -d          # full local stack
+uv sync --dev && docker compose up -d                       # full local stack
 uv run alembic -c packages/db/alembic.ini upgrade head
-make check                                     # or: pwsh scripts/check.ps1
+uv run python scripts/bootstrap_org.py --slug demo          # prints an API key once
+pwsh scripts/check.ps1                                      # or: make check
 ```
 
-- **Monorepo:** uv + pnpm workspaces with locked dependencies; `packages/domain` and
-  `packages/application` are framework-free, enforced by import-linter contracts in CI.
-- **Services:** FastAPI gateway (`/healthz`, `/readyz`, `/version`, OpenAPI) and an arq
-  worker, both containerized from `uv.lock`; typed settings fail fast on unsafe
-  staging/production configuration.
-- **Local stack:** Postgres 17 + pgvector, Redis, MinIO, OTel collector via Compose
-  (host ports offset: API 8100, Postgres 55432, web 3100).
-- **First migration:** Alembic `0001` with offline-SQL and live-database tests.
-- **CI:** `pr-validate` (format/lint/mypy/import-boundaries/unit/integration/web/docker)
-  and `security` (Gitleaks + pip-audit) workflows.
+- **Identity:** OIDC JWT *or* Argon2id-hashed API keys; five roles, default-deny RBAC
+  checked inside every use case. A key can never exceed its creator's permissions.
+- **Datasets:** presigned direct-to-storage uploads (file bytes never touch the API),
+  immutable **content-addressed** versions, worker-side parsing/profiling with hash
+  verification. Identical bytes reuse the existing version.
+- **Runs:** durable async jobs with a guarded state machine, append-only event history,
+  SSE streaming, `Idempotency-Key` support, and real cancellation.
+- **Evidence:** append-only audit log, including denials — written in their own
+  transaction so they survive the rolled-back request that produced them.
+- **Tests:** 180 passing, including a 20-case tenant-isolation suite proving a second
+  organization cannot reach anything by guessed ID.
 
-See [docs/operations/local-development.md](docs/operations/local-development.md).
+The agent itself is deliberately absent until Phase 4: a run today is accepted,
+claimed, and terminated as `abstained` with an explicit reason rather than
+fabricating an answer.
+
+See the [API guide](docs/operations/api-guide.md) and
+[local development guide](docs/operations/local-development.md).
 
 | Artifact | Location |
 |---|---|

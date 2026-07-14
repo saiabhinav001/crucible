@@ -54,7 +54,24 @@ flowchart LR
 4. Eval fixtures must never contain production data or credentials.
 5. Injection suspicion is terminal — logged, audited, never retried.
 
-## 5. Review cadence
+## 5. Implemented controls by phase
+
+### Phase 2 — identity and data plane (2026-07-14)
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| T5 cross-tenant access | Every repository read takes `organization_id` explicitly; cross-tenant reads return **404, not 403**, so IDs cannot be probed for existence. Object keys are tenant-prefixed (`org/{id}/…`). | `tests/security/test_tenant_isolation.py` — 20 cases: read, list, cancel, complete-upload, download-URL minting, run creation, key revocation, and header-based tenant switching |
+| T6 API auth | OIDC JWT (signature/issuer/audience/expiry) or Argon2id-hashed API keys; expiry and revocation take effect immediately; RBAC is default-deny and checked inside each use case, not at the route. | `test_jwt_verifier.py`, `test_api_keys.py`, `test_identity_policy.py` |
+| Privilege escalation | An API key can never exceed its creator's permissions, and `scopes` only ever intersect a role. `owner` holds an exclusive `org:manage` permission, so `admin` is strictly below it. | `test_admin_cannot_mint_a_key_beyond_their_own_permissions` |
+| T2 hostile uploads | Size/type/extension policy is enforced **before** a presigned URL exists; the parser (not the declared content type) is the authority; row/column caps guard decompression bombs; a client-declared SHA-256 is re-computed from the stored bytes, and a mismatch is a terminal `invalid`. | `test_profiler.py`, `test_declared_hash_must_match_the_uploaded_bytes` |
+| Audit evidence | Denials (401 and 403) are written in their **own transaction** — the request's session is rolled back when auth fails, so an audit row attached to it would vanish exactly when it matters. Download-URL issuance is audited. | `test_failed_authentication_is_audited`, `test_sensitive_actions_are_audited` |
+| Unbounded consumption | Per-principal rate limits; expensive routes **fail closed** when the limiter is unavailable rather than admitting unaccounted work. | `RateLimit` in `apps/api/.../dependencies.py` |
+
+**Known gap carried forward:** rate limits are per-principal only. Per-organization
+token/cost budgets arrive with Phase 8, and unauthenticated IP-level limiting is a
+WAF concern in Phase 9.
+
+## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3
 sandbox, P6 telemetry, P9 CI/CD hardening) and after any security incident.

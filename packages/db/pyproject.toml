@@ -7,7 +7,13 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
     "alembic>=1.14,<2",
     "psycopg[binary]>=3.2,<4",
+    "crucible-domain",
+    "crucible-application",
 ]
+
+[tool.uv.sources]
+crucible-domain = { workspace = true }
+crucible-application = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

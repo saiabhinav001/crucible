@@ -9,15 +9,20 @@ dependencies = [
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
     "redis>=5.2,<7",
+    "arq>=0.26,<1",
     "crucible-domain",
     "crucible-application",
     "crucible-db",
+    "crucible-security",
+    "crucible-storage",
 ]
 
 [tool.uv.sources]
 crucible-domain = { workspace = true }
 crucible-application = { workspace = true }
 crucible-db = { workspace = true }
+crucible-security = { workspace = true }
+crucible-storage = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

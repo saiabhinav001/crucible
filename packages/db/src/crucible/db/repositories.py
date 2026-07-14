@@ -1,0 +1,590 @@
+"""SQLAlchemy implementations of the application repository ports.
+
+Tenant scoping is structural: every read of a tenant-owned table filters on
+`organization_id`, which callers must pass explicitly. The only unscoped read
+is `get_run_unscoped`, used by the worker (which holds no principal) and never
+reachable from a request path.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from crucible.application.ports import (
+    ApiKeyRecord,
+    AuditEntry,
+    DatasetRecord,
+    DatasetVersionRecord,
+    MembershipRecord,
+    RunEventRecord,
+    RunRecord,
+    UserRecord,
+)
+from crucible.db import models as m
+from crucible.domain import (
+    DatasetProfile,
+    DatasetStatus,
+    DatasetVersionStatus,
+    Permission,
+    Role,
+    RunEventType,
+    RunStatus,
+    can_transition,
+    new_id,
+)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class SqlIdentityRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def upsert_user(
+        self, *, subject: str, email: str | None, display_name: str | None
+    ) -> UserRecord:
+        row = (
+            await self._s.execute(select(m.User).where(m.User.subject == subject))
+        ).scalar_one_or_none()
+        if row is None:
+            row = m.User(id=new_id(), subject=subject, email=email, display_name=display_name)
+            self._s.add(row)
+            await self._s.flush()
+        else:
+            # Profile fields follow the identity provider; the subject never changes.
+            row.email = email or row.email
+            row.display_name = display_name or row.display_name
+        return UserRecord(
+            id=row.id, subject=row.subject, email=row.email, display_name=row.display_name
+        )
+
+    async def memberships_for_user(self, user_id: uuid.UUID) -> list[MembershipRecord]:
+        stmt = (
+            select(m.Membership, m.Organization)
+            .join(m.Organization, m.Organization.id == m.Membership.organization_id)
+            .where(m.Membership.user_id == user_id)
+            .order_by(m.Organization.slug)
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return [
+            MembershipRecord(
+                organization_id=mem.organization_id,
+                organization_slug=org.slug,
+                organization_name=org.name,
+                user_id=mem.user_id,
+                role=Role(mem.role),
+            )
+            for mem, org in rows
+        ]
+
+    async def membership(
+        self, *, organization_id: uuid.UUID, user_id: uuid.UUID
+    ) -> MembershipRecord | None:
+        found = [
+            mem
+            for mem in await self.memberships_for_user(user_id)
+            if mem.organization_id == organization_id
+        ]
+        return found[0] if found else None
+
+    async def api_key_by_prefix(self, prefix: str) -> ApiKeyRecord | None:
+        row = (
+            await self._s.execute(select(m.ApiKey).where(m.ApiKey.prefix == prefix))
+        ).scalar_one_or_none()
+        return None if row is None else self._api_key(row)
+
+    async def touch_api_key(self, key_id: uuid.UUID) -> None:
+        await self._s.execute(
+            update(m.ApiKey).where(m.ApiKey.id == key_id).values(last_used_at=_now())
+        )
+
+    async def create_api_key(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        created_by: uuid.UUID | None,
+        name: str,
+        prefix: str,
+        secret_hash: str,
+        role: Role,
+        scopes: tuple[Permission, ...] | None,
+        expires_at: datetime | None,
+    ) -> ApiKeyRecord:
+        row = m.ApiKey(
+            id=new_id(),
+            organization_id=organization_id,
+            created_by_user_id=created_by,
+            name=name,
+            prefix=prefix,
+            secret_hash=secret_hash,
+            role=role.value,
+            scopes=None if scopes is None else [s.value for s in scopes],
+            expires_at=expires_at,
+        )
+        self._s.add(row)
+        await self._s.flush()
+        return self._api_key(row)
+
+    async def list_api_keys(self, organization_id: uuid.UUID) -> list[ApiKeyRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.ApiKey)
+                .where(m.ApiKey.organization_id == organization_id)
+                .order_by(m.ApiKey.created_at.desc())
+            )
+        ).scalars()
+        return [self._api_key(r) for r in rows]
+
+    async def revoke_api_key(self, *, organization_id: uuid.UUID, key_id: uuid.UUID) -> bool:
+        # Scoped by organization: revoking another tenant's key matches no rows
+        # and reports "not found" rather than succeeding.
+        revoked = (
+            await self._s.execute(
+                update(m.ApiKey)
+                .where(
+                    m.ApiKey.id == key_id,
+                    m.ApiKey.organization_id == organization_id,
+                    m.ApiKey.revoked_at.is_(None),
+                )
+                .values(revoked_at=_now())
+                .returning(m.ApiKey.id)
+            )
+        ).scalar_one_or_none()
+        return revoked is not None
+
+    @staticmethod
+    def _api_key(row: m.ApiKey) -> ApiKeyRecord:
+        return ApiKeyRecord(
+            id=row.id,
+            organization_id=row.organization_id,
+            name=row.name,
+            prefix=row.prefix,
+            secret_hash=row.secret_hash,
+            role=Role(row.role),
+            scopes=None if row.scopes is None else tuple(Permission(s) for s in row.scopes),
+            expires_at=row.expires_at,
+            revoked_at=row.revoked_at,
+        )
+
+
+class SqlDatasetRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def create_dataset(self, *, organization_id: uuid.UUID, name: str) -> DatasetRecord:
+        row = m.Dataset(
+            id=new_id(),
+            organization_id=organization_id,
+            name=name,
+            status=DatasetStatus.ACTIVE.value,
+        )
+        self._s.add(row)
+        await self._s.flush()
+        return self._dataset(row)
+
+    async def dataset_by_name(
+        self, *, organization_id: uuid.UUID, name: str
+    ) -> DatasetRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.Dataset).where(
+                    m.Dataset.organization_id == organization_id,
+                    m.Dataset.name == name,
+                    m.Dataset.status == DatasetStatus.ACTIVE.value,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._dataset(row)
+
+    async def get_dataset(
+        self, *, organization_id: uuid.UUID, dataset_id: uuid.UUID
+    ) -> DatasetRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.Dataset).where(
+                    m.Dataset.id == dataset_id,
+                    m.Dataset.organization_id == organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._dataset(row)
+
+    async def list_datasets(self, organization_id: uuid.UUID) -> list[DatasetRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.Dataset)
+                .where(
+                    m.Dataset.organization_id == organization_id,
+                    m.Dataset.status == DatasetStatus.ACTIVE.value,
+                )
+                .order_by(m.Dataset.created_at.desc())
+            )
+        ).scalars()
+        return [self._dataset(r) for r in rows]
+
+    async def create_version(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        version_id: uuid.UUID,
+        object_key: str,
+        content_type: str,
+        declared_size_bytes: int,
+        filename: str,
+    ) -> DatasetVersionRecord:
+        next_no = (
+            await self._s.execute(
+                select(func.coalesce(func.max(m.DatasetVersion.version_no), 0) + 1).where(
+                    m.DatasetVersion.dataset_id == dataset_id
+                )
+            )
+        ).scalar_one()
+        row = m.DatasetVersion(
+            id=version_id,
+            dataset_id=dataset_id,
+            organization_id=organization_id,
+            version_no=int(next_no),
+            status=DatasetVersionStatus.AWAITING_UPLOAD.value,
+            object_key=object_key,
+            original_filename=filename[:255],
+            content_type=content_type,
+            declared_size_bytes=declared_size_bytes,
+        )
+        self._s.add(row)
+        await self._s.flush()
+        return self._version(row)
+
+    async def get_version(
+        self, *, organization_id: uuid.UUID, version_id: uuid.UUID
+    ) -> DatasetVersionRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.DatasetVersion).where(
+                    m.DatasetVersion.id == version_id,
+                    m.DatasetVersion.organization_id == organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._version(row)
+
+    async def get_version_unscoped(self, version_id: uuid.UUID) -> DatasetVersionRecord | None:
+        """Worker-only: the profiling job has a version ID and no principal."""
+        row = (
+            await self._s.execute(select(m.DatasetVersion).where(m.DatasetVersion.id == version_id))
+        ).scalar_one_or_none()
+        return None if row is None else self._version(row)
+
+    async def list_versions(
+        self, *, organization_id: uuid.UUID, dataset_id: uuid.UUID
+    ) -> list[DatasetVersionRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.DatasetVersion)
+                .where(
+                    m.DatasetVersion.dataset_id == dataset_id,
+                    m.DatasetVersion.organization_id == organization_id,
+                )
+                .order_by(m.DatasetVersion.version_no.desc())
+            )
+        ).scalars()
+        return [self._version(r) for r in rows]
+
+    async def version_by_content_hash(
+        self, *, dataset_id: uuid.UUID, content_sha256: str
+    ) -> DatasetVersionRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.DatasetVersion).where(
+                    m.DatasetVersion.dataset_id == dataset_id,
+                    m.DatasetVersion.content_sha256 == content_sha256,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._version(row)
+
+    async def mark_version_uploaded(
+        self, *, version_id: uuid.UUID, size_bytes: int, content_sha256: str
+    ) -> DatasetVersionRecord:
+        row = await self._require(version_id)
+        row.size_bytes = size_bytes
+        row.content_sha256 = content_sha256
+        row.status = DatasetVersionStatus.PENDING_PROFILE.value
+        await self._s.flush()
+        return self._version(row)
+
+    async def mark_version_ready(
+        self, *, version_id: uuid.UUID, profile: DatasetProfile
+    ) -> DatasetVersionRecord:
+        row = await self._require(version_id)
+        row.profile = profile.to_dict()
+        row.schema_hash = profile.schema_hash
+        row.row_count = profile.row_count
+        row.column_count = profile.column_count
+        row.status = DatasetVersionStatus.READY.value
+        await self._s.flush()
+        return self._version(row)
+
+    async def mark_version_invalid(
+        self, *, version_id: uuid.UUID, reason: str, detail: str
+    ) -> DatasetVersionRecord:
+        row = await self._require(version_id)
+        row.status = DatasetVersionStatus.INVALID.value
+        row.invalid_reason = reason[:64]
+        row.invalid_detail = detail[:2000]
+        await self._s.flush()
+        return self._version(row)
+
+    async def delete_version(self, version_id: uuid.UUID) -> None:
+        """Only ever used for a not-yet-ready duplicate upload; a READY version
+        is immutable evidence and is never deleted here."""
+        await self._s.execute(
+            delete(m.DatasetVersion).where(
+                m.DatasetVersion.id == version_id,
+                m.DatasetVersion.status != DatasetVersionStatus.READY.value,
+            )
+        )
+
+    async def _require(self, version_id: uuid.UUID) -> m.DatasetVersion:
+        row = (
+            await self._s.execute(select(m.DatasetVersion).where(m.DatasetVersion.id == version_id))
+        ).scalar_one()
+        return row
+
+    @staticmethod
+    def _dataset(row: m.Dataset) -> DatasetRecord:
+        return DatasetRecord(
+            id=row.id,
+            organization_id=row.organization_id,
+            name=row.name,
+            created_at=row.created_at,
+        )
+
+    @staticmethod
+    def _version(row: m.DatasetVersion) -> DatasetVersionRecord:
+        return DatasetVersionRecord(
+            id=row.id,
+            dataset_id=row.dataset_id,
+            organization_id=row.organization_id,
+            version_no=row.version_no,
+            status=DatasetVersionStatus(row.status),
+            object_key=row.object_key,
+            content_type=row.content_type,
+            declared_size_bytes=row.declared_size_bytes,
+            size_bytes=row.size_bytes,
+            content_sha256=row.content_sha256,
+            schema_hash=row.schema_hash,
+            row_count=row.row_count,
+            column_count=row.column_count,
+            profile=row.profile,
+            invalid_reason=row.invalid_reason,
+            created_at=row.created_at,
+        )
+
+
+class SqlRunRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def create_run(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+        question: str,
+        config_manifest: dict[str, Any],
+        idempotency_key: str | None,
+        request_hash: str | None,
+        created_by: uuid.UUID | None,
+    ) -> RunRecord:
+        row = m.AgentRun(
+            id=new_id(),
+            organization_id=organization_id,
+            dataset_version_id=dataset_version_id,
+            created_by_user_id=created_by,
+            question=question,
+            status=RunStatus.QUEUED.value,
+            config_manifest=config_manifest,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+        self._s.add(row)
+        await self._s.flush()
+        return self._run(row)
+
+    async def get_run(self, *, organization_id: uuid.UUID, run_id: uuid.UUID) -> RunRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.AgentRun).where(
+                    m.AgentRun.id == run_id,
+                    m.AgentRun.organization_id == organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._run(row)
+
+    async def get_run_unscoped(self, run_id: uuid.UUID) -> RunRecord | None:
+        row = (
+            await self._s.execute(select(m.AgentRun).where(m.AgentRun.id == run_id))
+        ).scalar_one_or_none()
+        return None if row is None else self._run(row)
+
+    async def list_runs(
+        self, *, organization_id: uuid.UUID, limit: int, offset: int
+    ) -> list[RunRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.AgentRun)
+                .where(m.AgentRun.organization_id == organization_id)
+                .order_by(m.AgentRun.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars()
+        return [self._run(r) for r in rows]
+
+    async def run_by_idempotency_key(
+        self, *, organization_id: uuid.UUID, idempotency_key: str
+    ) -> RunRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.AgentRun).where(
+                    m.AgentRun.organization_id == organization_id,
+                    m.AgentRun.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._run(row)
+
+    async def transition(
+        self,
+        *,
+        run_id: uuid.UUID,
+        expected: RunStatus,
+        target: RunStatus,
+        terminal_detail: str | None = None,
+        failure_category: str | None = None,
+    ) -> RunRecord | None:
+        if not can_transition(expected, target):
+            raise ValueError(f"illegal run transition {expected.value} -> {target.value}")
+
+        values: dict[str, Any] = {"status": target.value, "updated_at": _now()}
+        if terminal_detail is not None:
+            values["terminal_detail"] = terminal_detail
+        if failure_category is not None:
+            values["failure_category"] = failure_category
+
+        # Compare-and-set: the UPDATE only matches while the run is still in the
+        # expected state, so two workers cannot both drive it forward.
+        result = await self._s.execute(
+            update(m.AgentRun)
+            .where(m.AgentRun.id == run_id, m.AgentRun.status == expected.value)
+            .values(**values)
+            .returning(m.AgentRun)
+        )
+        row = result.scalar_one_or_none()
+        return None if row is None else self._run(row)
+
+    async def request_cancel(self, run_id: uuid.UUID) -> None:
+        await self._s.execute(
+            update(m.AgentRun)
+            .where(m.AgentRun.id == run_id, m.AgentRun.cancel_requested_at.is_(None))
+            .values(cancel_requested_at=_now())
+        )
+
+    async def append_event(
+        self, *, run_id: uuid.UUID, event_type: RunEventType, payload: dict[str, Any]
+    ) -> RunEventRecord:
+        next_no = (
+            await self._s.execute(
+                select(func.coalesce(func.max(m.RunEvent.sequence_no), 0) + 1).where(
+                    m.RunEvent.run_id == run_id
+                )
+            )
+        ).scalar_one()
+        row = m.RunEvent(
+            id=new_id(),
+            run_id=run_id,
+            sequence_no=int(next_no),
+            event_type=event_type.value,
+            payload=payload,
+        )
+        self._s.add(row)
+        await self._s.flush()
+        return RunEventRecord(
+            run_id=row.run_id,
+            sequence_no=row.sequence_no,
+            event_type=RunEventType(row.event_type),
+            payload=row.payload,
+            created_at=row.created_at,
+        )
+
+    async def list_events(
+        self, *, run_id: uuid.UUID, after_sequence: int = 0
+    ) -> list[RunEventRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.RunEvent)
+                .where(m.RunEvent.run_id == run_id, m.RunEvent.sequence_no > after_sequence)
+                .order_by(m.RunEvent.sequence_no)
+            )
+        ).scalars()
+        return [
+            RunEventRecord(
+                run_id=r.run_id,
+                sequence_no=r.sequence_no,
+                event_type=RunEventType(r.event_type),
+                payload=r.payload,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]
+
+    @staticmethod
+    def _run(row: m.AgentRun) -> RunRecord:
+        return RunRecord(
+            id=row.id,
+            organization_id=row.organization_id,
+            dataset_version_id=row.dataset_version_id,
+            question=row.question,
+            status=RunStatus(row.status),
+            config_manifest=row.config_manifest,
+            idempotency_key=row.idempotency_key,
+            request_hash=row.request_hash,
+            terminal_detail=row.terminal_detail,
+            failure_category=row.failure_category,
+            cancel_requested_at=row.cancel_requested_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+
+class SqlAuditSink:
+    """Append-only audit log. There is deliberately no update or delete method."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def record(self, entry: AuditEntry) -> None:
+        self._s.add(
+            m.AuditEvent(
+                id=new_id(),
+                organization_id=entry.organization_id,
+                actor_type=entry.actor_type.value,
+                actor_id=entry.actor_id,
+                action=entry.action.value,
+                result=entry.result.value,
+                target_type=entry.target_type,
+                target_id=entry.target_id,
+                request_id=entry.request_id,
+                event_metadata=entry.metadata,
+            )
+        )
+        await self._s.flush()

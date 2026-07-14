@@ -57,16 +57,28 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: crucible
+          MINIO_ROOT_PASSWORD: crucible-local-only
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "mc ready local"
+          --health-interval 10s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://crucible:crucible@localhost:5432/crucible
-      REDIS_URL: redis://localhost:6379/0
+      TEST_REDIS_URL: redis://localhost:6379/1
+      S3_ENDPOINT_URL: http://localhost:9000
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --dev --frozen
-      - name: Integration tests (live Postgres/Redis)
+      - name: Apply migrations
+        run: uv run alembic -c packages/db/alembic.ini upgrade head
+      - name: Integration + security tests (live Postgres/Redis/MinIO)
         run: uv run pytest -m integration
 
   web-checks:

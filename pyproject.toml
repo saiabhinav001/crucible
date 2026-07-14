@@ -7,6 +7,8 @@ dependencies = [
     "crucible-domain",
     "crucible-application",
     "crucible-db",
+    "crucible-security",
+    "crucible-storage",
     "crucible-api",
     "crucible-worker",
 ]
@@ -29,6 +31,8 @@ members = [
     "packages/domain",
     "packages/application",
     "packages/db",
+    "packages/security",
+    "packages/storage",
     "apps/api",
     "apps/worker",
 ]
@@ -37,6 +41,8 @@ members = [
 crucible-domain = { workspace = true }
 crucible-application = { workspace = true }
 crucible-db = { workspace = true }
+crucible-security = { workspace = true }
+crucible-storage = { workspace = true }
 crucible-api = { workspace = true }
 crucible-worker = { workspace = true }
 
@@ -53,24 +59,34 @@ ignore = ["E501"]  # line length handled by formatter
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
 "evals/references/**" = ["T20"]  # reference calculators intentionally print
+"scripts/**" = ["T20"]  # operator CLIs print their results
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 python_version = "3.12"
 strict = true
 files = ["packages", "apps"]
-mypy_path = ["packages/domain/src", "packages/application/src", "packages/db/src", "apps/api/src", "apps/worker/src"]
+mypy_path = [
+    "packages/domain/src",
+    "packages/application/src",
+    "packages/db/src",
+    "packages/security/src",
+    "packages/storage/src",
+    "apps/api/src",
+    "apps/worker/src",
+]
 explicit_package_bases = true
 namespace_packages = true
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
-module = ["arq.*"]
+module = ["arq.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so security tests can import shared integration fixtures
 markers = [
     "integration: requires live Postgres/Redis (deselect with -m 'not integration')",
 ]
@@ -89,8 +105,9 @@ type = "forbidden"
 source_modules = ["crucible.domain"]
 forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
-    "alembic", "redis", "arq", "httpx",
-    "crucible.application", "crucible.db", "crucible_api", "crucible_worker",
+    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2",
+    "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
+    "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -99,12 +116,19 @@ type = "forbidden"
 source_modules = ["crucible.application"]
 forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
-    "alembic", "redis", "arq", "httpx",
-    "crucible.db", "crucible_api", "crucible_worker",
+    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2",
+    "crucible.db", "crucible.security", "crucible.storage",
+    "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
-name = "db layer does not import transport apps"
+name = "adapters do not import transport apps"
 type = "forbidden"
-source_modules = ["crucible.db"]
+source_modules = ["crucible.db", "crucible.security", "crucible.storage"]
 forbidden_modules = ["fastapi", "starlette", "crucible_api", "crucible_worker"]
+
+[[tool.importlinter.contracts]]
+name = "security and storage adapters do not depend on each other or on db"
+type = "forbidden"
+source_modules = ["crucible.security", "crucible.storage"]
+forbidden_modules = ["crucible.db"]

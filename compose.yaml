@@ -64,6 +64,10 @@ services:
       CRUCIBLE_PROFILE: local
       DATABASE_URL: postgresql+psycopg://crucible:crucible@postgres:5432/crucible
       REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: http://minio:9000 # server-to-server
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000 # what presigned URLs must use
+      S3_ACCESS_KEY: crucible
+      S3_SECRET_KEY: crucible-local-only
       GIT_SHA: ${GIT_SHA:-unknown}
     # Host port offset: 8000 is a common default for other local services.
     ports: ["8100:8000"]
@@ -86,10 +90,16 @@ services:
         GIT_SHA: ${GIT_SHA:-unknown}
     environment:
       CRUCIBLE_PROFILE: local
+      DATABASE_URL: postgresql+psycopg://crucible:crucible@postgres:5432/crucible
       REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: crucible
+      S3_SECRET_KEY: crucible-local-only
       GIT_SHA: ${GIT_SHA:-unknown}
     depends_on:
       redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "arq", "--check", "crucible_worker.main.WorkerSettings"]
       interval: 30s
