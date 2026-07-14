@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local environment & secrets (templates are committed; real values never)
+.env
+.env.*.local
+
+# Generated eval reports (examples are committed explicitly if needed)
+evals/reports/
+
+# OS noise
+.DS_Store
+Thumbs.db

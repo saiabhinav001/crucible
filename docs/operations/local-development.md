@@ -1,0 +1,56 @@
+# Local Development Guide
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| uv | ≥ 0.9 | Manages Python itself (downloads CPython 3.12 per `.python-version`) |
+| Node.js | 22 LTS | Web workspace |
+| pnpm | 10 | `npm i -g pnpm` or corepack |
+| Docker | any recent | Compose v2 for the local stack |
+| make (optional) | any | Windows: use `scripts/check.ps1` instead |
+
+## First run
+
+```bash
+uv sync --dev                # creates .venv from uv.lock (reproducible)
+uv run pre-commit install
+pnpm install
+cp .env.example .env         # local defaults; never put real secrets here
+docker compose up -d         # postgres, redis, minio, otel-collector
+uv run alembic -c packages/db/alembic.ini upgrade head
+```
+
+## The one command (Phase 1 Definition of Done)
+
+```bash
+make check                   # or: pwsh scripts/check.ps1
+```
+
+Runs: format check → lint → mypy (strict) → import-boundary contracts →
+unit tests → migration offline-SQL check → seed-suite reference calculators.
+
+## Everyday commands
+
+| Task | Command |
+|---|---|
+| API with reload | `uv run uvicorn --factory crucible_api.main:create_app --reload` |
+| Worker | `uv run arq crucible_worker.main.WorkerSettings` |
+| Web shell | `pnpm dev` → http://localhost:3000 |
+| OpenAPI docs | http://localhost:8000/docs |
+| Unit tests | `uv run pytest -m "not integration"` |
+| Integration tests | `docker compose up -d` then `uv run pytest -m integration` |
+| New migration | `uv run alembic -c packages/db/alembic.ini revision -m "..."` |
+| Full containerized stack | `docker compose up -d --build` (add `--profile full` for web) |
+| MinIO console | http://localhost:9001 (crucible / crucible-local-only) |
+
+## Conventions that bite if missed
+
+- Migrations run as an explicit step; the API never migrates on startup.
+- `packages/domain` and `packages/application` must stay framework-free —
+  `uv run lint-imports` fails the build otherwise.
+- Settings: only `crucible_api/settings.py` and `crucible_worker/settings.py`
+  read the environment. Staging/production profiles refuse localhost URLs,
+  wildcard CORS, and unknown git SHAs at startup — by design.
+- The `/version` endpoint reports the build's git SHA: injected via `GIT_SHA`
+  in CI/images, `git rev-parse` fallback in local dev.

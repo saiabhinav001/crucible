@@ -1,0 +1,27 @@
+id: retail_sales_v1
+kind: dataset_fixture
+version: 1.0.0
+file: retail_sales_v1.csv
+sha256: "347e147d4e1f5709250a759f56924c837adc5d24795ded8d8964e6dcc9d6c849"
+rows: 40
+columns:
+  - {name: order_id,    type: string,  nullable: false, note: "unique per row"}
+  - {name: order_date,  type: date,    nullable: false, note: "ISO yyyy-mm-dd, 2024-01..2024-09"}
+  - {name: region,      type: string,  nullable: true,  note: "North/South/East/West; 1 row intentionally empty (ORD-1023)"}
+  - {name: category,    type: string,  nullable: false, note: "Electronics / Furniture / Office Supplies"}
+  - {name: product,     type: string,  nullable: false}
+  - {name: quantity,    type: integer, nullable: false, note: "positive"}
+  - {name: unit_price,  type: decimal, nullable: false, note: "USD"}
+  - {name: discount,    type: decimal, nullable: true,  note: "fraction 0..1; 4 rows intentionally empty"}
+  - {name: customer_id, type: string,  nullable: false, note: "32 distinct; several repeat buyers"}
+provenance:
+  source: "Fully synthetic; hand-authored for the Crucible Phase 0 seed suite on 2026-07-14."
+  license: "Project-owned synthetic data; no real persons, prices, or transactions."
+  pii: none
+  sensitive: false
+intentional_edge_cases:
+  - "4 empty discount cells (ORD-1003, ORD-1007, ORD-1017, ORD-1032)"
+  - "1 empty region cell (ORD-1023) — excluded from region groupings, included in totals"
+  - "no cost/margin column — supports the invalid-question abstention case (seed-10)"
+  - "repeat customer_ids to distinguish row count from distinct count"
+canonicalization_contract: "See evals/references/_common.py docstring; changes require a new fixture/suite version."
