@@ -20,8 +20,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from crucible.db import create_async_engine_from_url, install_selector_event_loop_policy
 from crucible.storage import S3ObjectStorage
+from crucible_worker.executor import build_executor
 from crucible_worker.jobs.datasets import profile_dataset_version
 from crucible_worker.jobs.runs import execute_run
+from crucible_worker.jobs.sandbox import sandbox_selfcheck
 from crucible_worker.settings import WorkerAppSettings
 
 install_selector_event_loop_policy()  # Windows dev only; no-op elsewhere
@@ -48,11 +50,14 @@ async def on_startup(ctx: dict[str, Any]) -> None:
         access_key=_settings.s3_access_key,
         secret_key=_settings.s3_secret_key,
     )
+    executor = build_executor(_settings)
+    ctx["executor"] = executor
     logger.info(
-        "crucible worker started profile=%s git_sha=%s concurrency=%s",
+        "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s",
         _settings.profile,
         _settings.git_sha,
         _settings.job_concurrency,
+        executor.backend,
     )
 
 
@@ -65,7 +70,12 @@ async def on_shutdown(ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """arq configuration object (arq reads class attributes)."""
 
-    functions: ClassVar[list[Any]] = [ping, profile_dataset_version, execute_run]
+    functions: ClassVar[list[Any]] = [
+        ping,
+        profile_dataset_version,
+        execute_run,
+        sandbox_selfcheck,
+    ]
     on_startup = on_startup
     on_shutdown = on_shutdown
     redis_settings: ClassVar[RedisSettings] = RedisSettings.from_dsn(_settings.redis_url)

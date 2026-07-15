@@ -19,6 +19,9 @@ next-env.d.ts
 # Generated eval reports (examples are committed explicitly if needed)
 evals/reports/
 
+# Per-run sandbox working directories (inputs/outputs for the Docker executor)
+.sandbox_runs/
+
 # OS noise
 .DS_Store
 Thumbs.db

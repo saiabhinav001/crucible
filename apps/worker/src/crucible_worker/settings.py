@@ -42,3 +42,24 @@ class WorkerAppSettings(BaseSettings):
     s3_secret_key: str | None = Field(
         default="crucible-local-only", validation_alias=AliasChoices("S3_SECRET_KEY")
     )
+
+    # Sandbox backend for untrusted code (ADR-003).
+    #   fake    - deterministic, no execution (default: the compose worker has
+    #             no Docker socket, by policy, so it cannot use docker)
+    #   docker  - local hardened Docker runner (host-run worker / tests only)
+    #   microvm - managed provider (staging/production)
+    executor_backend: Literal["fake", "docker", "microvm"] = Field(
+        default="fake", validation_alias=AliasChoices("EXECUTOR_BACKEND")
+    )
+    sandbox_image: str = Field(
+        default="crucible-sandbox-runner:local", validation_alias=AliasChoices("SANDBOX_IMAGE")
+    )
+    sandbox_work_root: str | None = Field(
+        default=None, validation_alias=AliasChoices("SANDBOX_WORK_ROOT")
+    )
+    microvm_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("MICROVM_API_KEY")
+    )
+    microvm_template_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("MICROVM_TEMPLATE_ID")
+    )

@@ -1,7 +1,7 @@
 [project]
 name = "crucible-worker"
 version = "0.1.0"
-description = "Async job consumer (arq). Phase 1: heartbeat/ping only; LangGraph arrives in Phase 4."
+description = "Async job consumer (arq): dataset profiling, durable runs, sandbox self-check."
 requires-python = ">=3.12"
 dependencies = [
     "arq>=0.26,<1",
@@ -10,6 +10,7 @@ dependencies = [
     "crucible-application",
     "crucible-db",
     "crucible-storage",
+    "crucible-execution",
 ]
 
 [tool.uv.sources]
@@ -17,6 +18,7 @@ crucible-domain = { workspace = true }
 crucible-application = { workspace = true }
 crucible-db = { workspace = true }
 crucible-storage = { workspace = true }
+crucible-execution = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

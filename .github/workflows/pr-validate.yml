@@ -102,3 +102,22 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build API/worker image reproducibly from uv.lock
         run: docker build -f infra/docker/python.Dockerfile --target api --build-arg GIT_SHA=${{ github.sha }} .
+
+  sandbox-canaries:
+    # The security-critical gate: build the hardened runner and prove that
+    # hostile programs are contained. Runs on a standard (unprivileged) runner;
+    # the sandbox controls (network_disabled, cap_drop, read_only, resource
+    # limits) do not require a privileged host.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --dev --frozen
+      - name: Build the sandbox runner image
+        run: docker build -f infra/docker/runner.Dockerfile -t crucible-sandbox-runner:local .
+      - name: Run sandbox canaries (containment must hold)
+        env:
+          SANDBOX_WORK_ROOT: ${{ github.workspace }}/.sandbox_runs
+        run: uv run pytest -m sandbox -p no:cacheprovider

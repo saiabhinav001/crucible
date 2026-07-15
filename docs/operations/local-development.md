@@ -48,6 +48,18 @@ unit tests → migration offline-SQL check → seed-suite reference calculators.
 | New migration | `uv run alembic -c packages/db/alembic.ini revision -m "..."` |
 | Full containerized stack | `docker compose up -d --build` (add `--profile full` for web) |
 | MinIO console | http://localhost:9001 (crucible / crucible-local-only) |
+| Build the sandbox runner | `make sandbox-image` |
+| Run sandbox canaries | `make sandbox` (needs Docker + the runner image) |
+
+### The execution sandbox (Phase 3)
+
+Model-generated code runs in a hardened, deny-by-default container (ADR-003,
+[docs/security/sandbox.md](../security/sandbox.md)). Backends are selected by
+`EXECUTOR_BACKEND`: `fake` (default; never executes code), `docker` (local dev),
+`microvm` (staging/prod). The compose worker uses `fake` on purpose — it has no
+Docker socket, and giving it one would break the trust boundary. The Docker
+backend is exercised from the host by the canary suite (`pytest -m sandbox`),
+which is skipped automatically when Docker or the runner image is unavailable.
 
 ## Conventions that bite if missed
 

@@ -10,11 +10,32 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 2 complete (identity, dataset ingestion, durable data plane)
+## Status: Phase 3 complete (isolated execution boundary + safety canaries)
 
-Phase 0 defined the workload, threat boundary, and metric contract. Phase 1 built the
-reproducible platform. Phase 2 adds the tenant and data foundation — everything the
-agent will need, built *before* an LLM is allowed anywhere near the data.
+Phase 0 defined the workload and metric contract; Phase 1 built the reproducible
+platform; Phase 2 added the tenant and data foundation. **Phase 3 builds the
+execution boundary for model-generated code and proves it** — the highest-risk
+phase, deliberately built before any agent exists to run code through it.
+
+- **Fixed protocol, no model-controlled config.** The execution request carries
+  only a program and one dataset; it has no field for an image, mount, network
+  flag, capability, package, or environment variable.
+- **Hardened runner (local dev):** non-root, all Linux capabilities dropped,
+  no-new-privileges, read-only root, network disabled (no egress/DNS/metadata),
+  no Docker socket, memory/CPU/pids/wall-clock/file-size/output caps, fresh
+  container per attempt, force-destroyed.
+- **Backends** (ADR-003): `FakeExecutor` (tests, never runs code), `DockerExecutor`
+  (dev), `MicroVMExecutor` (staging/prod, deny-by-default with no weaker fallback).
+- **20 containment canaries** run real hostile programs against the real runner
+  and prove each control holds — network exfiltration, host escape, privilege
+  escalation, memory/CPU/fork/output bombs, malicious artifacts, and secret
+  disclosure are all contained. See [docs/security/sandbox.md](docs/security/sandbox.md).
+
+```bash
+make sandbox-image && make sandbox      # build the runner and run the canaries
+```
+
+Earlier phases (identity, dataset ingestion, durable runs) below.
 
 ```bash
 uv sync --dev && docker compose up -d                       # full local stack

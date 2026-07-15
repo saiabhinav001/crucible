@@ -9,6 +9,7 @@ dependencies = [
     "crucible-db",
     "crucible-security",
     "crucible-storage",
+    "crucible-execution",
     "crucible-api",
     "crucible-worker",
 ]
@@ -21,6 +22,7 @@ dev = [
     "mypy>=1.13",
     "import-linter>=2.1",
     "pre-commit>=4.0",
+    "docker>=7.1,<8",  # host-side Docker SDK for the sandbox canary suite (local dev)
 ]
 
 [tool.uv]
@@ -33,6 +35,7 @@ members = [
     "packages/db",
     "packages/security",
     "packages/storage",
+    "packages/execution",
     "apps/api",
     "apps/worker",
 ]
@@ -43,6 +46,7 @@ crucible-application = { workspace = true }
 crucible-db = { workspace = true }
 crucible-security = { workspace = true }
 crucible-storage = { workspace = true }
+crucible-execution = { workspace = true }
 crucible-api = { workspace = true }
 crucible-worker = { workspace = true }
 
@@ -72,6 +76,7 @@ mypy_path = [
     "packages/db/src",
     "packages/security/src",
     "packages/storage/src",
+    "packages/execution/src",
     "apps/api/src",
     "apps/worker/src",
 ]
@@ -80,7 +85,7 @@ namespace_packages = true
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
-module = ["arq.*", "boto3.*", "botocore.*"]
+module = ["arq.*", "boto3.*", "botocore.*", "docker.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
@@ -89,6 +94,7 @@ testpaths = ["tests"]
 pythonpath = ["."]  # so security tests can import shared integration fixtures
 markers = [
     "integration: requires live Postgres/Redis (deselect with -m 'not integration')",
+    "sandbox: requires a Docker daemon and the built runner image (canary suite)",
 ]
 addopts = "-q"
 
@@ -105,9 +111,9 @@ type = "forbidden"
 source_modules = ["crucible.domain"]
 forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
-    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2",
+    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
     "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
-    "crucible_api", "crucible_worker",
+    "crucible.execution", "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -116,19 +122,25 @@ type = "forbidden"
 source_modules = ["crucible.application"]
 forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
-    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2",
-    "crucible.db", "crucible.security", "crucible.storage",
+    "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
+    "crucible.db", "crucible.security", "crucible.storage", "crucible.execution",
     "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
 name = "adapters do not import transport apps"
 type = "forbidden"
-source_modules = ["crucible.db", "crucible.security", "crucible.storage"]
+source_modules = ["crucible.db", "crucible.security", "crucible.storage", "crucible.execution"]
 forbidden_modules = ["fastapi", "starlette", "crucible_api", "crucible_worker"]
 
 [[tool.importlinter.contracts]]
-name = "security and storage adapters do not depend on each other or on db"
+name = "adapter packages do not depend on each other"
 type = "forbidden"
-source_modules = ["crucible.security", "crucible.storage"]
+source_modules = ["crucible.security", "crucible.storage", "crucible.execution"]
 forbidden_modules = ["crucible.db"]
+
+[[tool.importlinter.contracts]]
+name = "execution imports only the domain (not other adapters)"
+type = "forbidden"
+source_modules = ["crucible.execution"]
+forbidden_modules = ["crucible.security", "crucible.storage", "crucible.application"]

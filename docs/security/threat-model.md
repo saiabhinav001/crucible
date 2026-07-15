@@ -71,6 +71,26 @@ flowchart LR
 token/cost budgets arrive with Phase 8, and unauthenticated IP-level limiting is a
 WAF concern in Phase 9.
 
+### Phase 3 — isolated execution and safety canaries (2026-07-15)
+
+The execution boundary for model-generated code (threat T3/T4/T11) is built and
+proven. Full detail and the control-to-canary matrix live in
+[docs/security/sandbox.md](sandbox.md); summary:
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| T3 host escape / RCE | Fixed hardened runner: non-root, all caps dropped, no-new-privileges, read-only root, no Docker socket, private IPC. The model contributes only program source + dataset bytes; the request schema has no field for image/mount/network/caps/env. | `tests/sandbox/test_canaries.py` — privilege, docker-socket, read-only-root, schema canaries |
+| T3 network exfiltration | `network_disabled` + `network_mode=none`: no egress, no DNS, no metadata endpoint. | outbound-TCP, DNS, cloud-metadata canaries (all blocked) |
+| T3 resource exhaustion | Memory (no swap), CPU, pids, wall-clock, per-file (RLIMIT_FSIZE), and total-output caps; fresh container per attempt, force-destroyed. | memory/CPU/fork/file-size/output-bomb canaries (all contained) |
+| T4 sandbox control plane | The backend constructs a fixed config; the compose worker has no Docker socket and defaults to the fake backend; the microVM adapter refuses a weaker fallback. | ADR-003; `executor_backend` default `fake` |
+| T4 secret disclosure | The harness passes the child a minimal environment (two fixed paths); no host credential is inherited into the guest. | no-host-secrets canary |
+| T11 malicious output | Extension allowlist, symlinks rejected, per-file/total caps, JSON-object result contract; stdout is never trusted as the result. | malicious-artifact, symlink, non-object-result, output-cap canaries |
+| Cross-tenant data (T5 at the sandbox) | Only the single assigned dataset is mounted, read-only; no other file is visible. | assigned-dataset-only canary |
+
+**Latest canary run:** 20/20 passing (Docker 29.6.1). **Known limitations**
+(carried forward): the Docker backend is local-dev only; production microVM
+provider integration and base-image digest pinning land in Phases 9–10.
+
 ## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3

@@ -36,6 +36,12 @@ test:
 test-int:             ## Requires the compose stack (make up)
 	uv run pytest -m integration
 
+sandbox-image:        ## Build the hardened sandbox runner image
+	docker build -f infra/docker/runner.Dockerfile -t crucible-sandbox-runner:local .
+
+sandbox:              ## Run the sandbox containment canaries (needs the image)
+	uv run pytest -m sandbox
+
 evals:                ## Seed-suite reference calculators
 	uv run python evals/references/run_all.py
 
