@@ -20,9 +20,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from crucible.db import create_async_engine_from_url, install_selector_event_loop_policy
 from crucible.storage import S3ObjectStorage
+from crucible_worker.agent_runtime import build_limits, build_model
 from crucible_worker.executor import build_executor
 from crucible_worker.jobs.datasets import profile_dataset_version
-from crucible_worker.jobs.runs import execute_run
+from crucible_worker.jobs.runs import execute_run, resolve_run_review
 from crucible_worker.jobs.sandbox import sandbox_selfcheck
 from crucible_worker.settings import WorkerAppSettings
 
@@ -52,12 +53,15 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     )
     executor = build_executor(_settings)
     ctx["executor"] = executor
+    ctx["model"] = build_model(_settings)
+    ctx["limits"] = build_limits(_settings)
     logger.info(
-        "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s",
+        "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s model=%s",
         _settings.profile,
         _settings.git_sha,
         _settings.job_concurrency,
         executor.backend,
+        _settings.model_backend,
     )
 
 
@@ -74,6 +78,7 @@ class WorkerSettings:
         ping,
         profile_dataset_version,
         execute_run,
+        resolve_run_review,
         sandbox_selfcheck,
     ]
     on_startup = on_startup

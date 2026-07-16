@@ -20,6 +20,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -219,7 +220,58 @@ class AgentRun(Base):
     terminal_detail: Mapped[str | None] = mapped_column(Text)
     failure_category: Mapped[str | None] = mapped_column(String(48))
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Phase 4: the final structured answer + provenance, and the verification vector.
+    answer: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    verification: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AgentAttempt(Base):
+    __tablename__ = "agent_attempts"
+    __table_args__ = (
+        UniqueConstraint("run_id", "attempt_no", name="uq_agent_attempts_run_id"),
+        CheckConstraint(
+            "kind IN ('plan', 'code', 'execute', 'repair', 'verify')",
+            name="kind_valid",
+        ),
+        Index("ix_agent_attempts_run_id_created_at", "run_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+    )
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    model_provider: Mapped[str | None] = mapped_column(String(64))
+    model_id: Mapped[str | None] = mapped_column(String(128))
+    exit_class: Mapped[str | None] = mapped_column(String(32))
+    failure_category: Mapped[str | None] = mapped_column(String(48))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    source_sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class AgentCheckpoint(Base):
+    """One row per run: the serialized graph state and the next node to run.
+    Upserted after every node so a worker restart resumes (ADR-008)."""
+
+    __tablename__ = "agent_checkpoints"
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    node: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

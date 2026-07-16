@@ -103,18 +103,19 @@ def test_upload_profile_run_lifecycle(
     assert run["config_manifest"]["dataset_content_sha256"] == CSV_SHA
     assert created.headers["Location"] == f"/v1/runs/{run['id']}"
 
-    # The worker claims it and terminates truthfully: the agent does not exist
-    # yet (Phase 4), so the run abstains rather than inventing an answer.
+    # The worker runs the agent. The default worker_ctx executor returns no
+    # value, so the run abstains rather than fabricating an answer (a real answer
+    # requires the Docker/microVM executor; see the sandbox and agent suites).
     outcome = asyncio.run(execute_run(worker_ctx, run["id"]))
     assert outcome["result"] == "abstained"
 
     final = client.get(f"/v1/runs/{run['id']}", headers=alice.auth).json()
     assert final["status"] == "abstained"
-    assert "not implemented yet" in final["terminal_detail"]
+    assert final["answer"] is None
 
     events = client.get(f"/v1/runs/{run['id']}/events", headers=alice.auth).json()
-    assert [e["event_type"] for e in events] == ["created", "claimed", "terminal"]
-    assert [e["sequence_no"] for e in events] == [1, 2, 3]
+    types = [e["event_type"] for e in events]
+    assert types[0] == "created" and types[1] == "claimed" and types[-1] == "terminal"
 
 
 def test_identical_content_reuses_the_same_version(
@@ -303,7 +304,7 @@ def test_queued_run_cancels_synchronously(
 
     # A worker that later picks up the job must not resurrect a cancelled run.
     outcome = asyncio.run(execute_run(worker_ctx, run["id"]))
-    assert outcome["result"] == "not_claimable"
+    assert outcome["result"] == "already_terminal"
     assert client.get(f"/v1/runs/{run['id']}", headers=alice.auth).json()["status"] == "cancelled"
 
 
@@ -336,7 +337,8 @@ def test_job_redelivery_is_safe(
     ).json()
 
     assert asyncio.run(execute_run(worker_ctx, run["id"]))["result"] == "abstained"
-    assert asyncio.run(execute_run(worker_ctx, run["id"]))["result"] == "not_claimable"
+    # Re-delivery after a terminal run is a no-op, not a second termination.
+    assert asyncio.run(execute_run(worker_ctx, run["id"]))["result"] == "already_terminal"
 
     events = client.get(f"/v1/runs/{run['id']}/events", headers=alice.auth).json()
     assert sum(1 for e in events if e["event_type"] == "terminal") == 1

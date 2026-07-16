@@ -10,12 +10,39 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 3 complete (isolated execution boundary + safety canaries)
+## Status: Phase 4 complete (durable data-agent MVP)
 
-Phase 0 defined the workload and metric contract; Phase 1 built the reproducible
-platform; Phase 2 added the tenant and data foundation. **Phase 3 builds the
-execution boundary for model-generated code and proves it** — the highest-risk
-phase, deliberately built before any agent exists to run code through it.
+Phases 0–3 defined the workload, built the platform and data plane, and proved
+the execution sandbox. **Phase 4 is the agent**: it plans an analysis, generates
+code, runs it in the Phase 3 sandbox, verifies, and either answers with
+provenance, abstains truthfully, or routes to human review.
+
+- **Explicit durable graph** (ADR-008): validate → profile → plan → code →
+  execute → observe → repair (bounded, max 2) → verify → synthesize. It
+  checkpoints after every node, so a worker restart resumes from where it left
+  off rather than re-running model calls and sandbox executions.
+- **Provider-neutral model gateway**: a deterministic `fake` backend (template
+  planner/coder — offline, no cloud LLM) and an OpenAI-compatible contract. The
+  fake produces *real, correct* answers because the generated code runs for real
+  in the sandbox.
+- **Honest terminal states**: `answered` (with provenance pointing at the
+  computed result), `abstained` (unsupported question, or a failure that repair
+  can't fix), `waiting_review` (an ambiguous result, e.g. a tie), `cancelled`.
+  The answer text is synthesized mechanically from the verified result, so it
+  can never claim more than the number.
+- **Proven end to end**: the agent computes real sums, distinct counts, and
+  group-maxima through the actual Docker sandbox; the durable resume, bounded
+  repair, oscillation guard, and review flow are all tested.
+
+```bash
+make sandbox-image                    # build the runner
+uv run pytest -m sandbox              # agent computes real answers in the sandbox
+```
+
+<details><summary>Earlier: Phase 3 — isolated execution boundary + safety canaries</summary>
+
+The highest-risk phase, deliberately built before any agent existed to run code
+through it.
 
 - **Fixed protocol, no model-controlled config.** The execution request carries
   only a program and one dataset; it has no field for an image, mount, network
@@ -34,6 +61,8 @@ phase, deliberately built before any agent exists to run code through it.
 ```bash
 make sandbox-image && make sandbox      # build the runner and run the canaries
 ```
+
+</details>
 
 Earlier phases (identity, dataset ingestion, durable runs) below.
 

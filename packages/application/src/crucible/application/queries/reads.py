@@ -7,8 +7,10 @@ Every query takes the principal and scopes to its organization. There is no
 from __future__ import annotations
 
 import uuid
+from typing import Protocol
 
 from crucible.application.ports import (
+    AgentAttemptRecord,
     ApiKeyRecord,
     DatasetRecord,
     DatasetRepository,
@@ -19,6 +21,10 @@ from crucible.application.ports import (
     RunRepository,
 )
 from crucible.domain import NotFound, Permission, PermissionDenied, Principal
+
+
+class AttemptReader(Protocol):
+    async def list_attempts(self, run_id: uuid.UUID) -> list[AgentAttemptRecord]: ...
 
 
 def _require(principal: Principal, permission: Permission) -> None:
@@ -107,6 +113,20 @@ class ListRunEvents:
         if run is None:
             raise NotFound("Run")
         return await self._runs.list_events(run_id=run_id, after_sequence=after_sequence)
+
+
+class ListRunAttempts:
+    def __init__(self, *, runs: RunRepository, attempts: AttemptReader) -> None:
+        self._runs = runs
+        self._attempts = attempts
+
+    async def __call__(self, principal: Principal, run_id: uuid.UUID) -> list[AgentAttemptRecord]:
+        _require(principal, Permission.RUN_READ)
+        # Ownership is proven through the parent run before attempts are read.
+        run = await self._runs.get_run(organization_id=principal.organization_id, run_id=run_id)
+        if run is None:
+            raise NotFound("Run")
+        return await self._attempts.list_attempts(run_id)
 
 
 class ListApiKeys:

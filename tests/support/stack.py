@@ -186,7 +186,32 @@ def worker_ctx(settings: ApiSettings) -> Iterator[dict[str, Any]]:
         secret_key=settings.s3_secret_key,
     )
     storage.ensure_bucket()
+
+    from crucible.agent import FakeModel
+    from crucible.execution import (
+        ExecutionLimits,
+        ExecutionResult,
+        ExitClass,
+        FakeExecutor,
+        ResourceUsage,
+    )
+
+    def _abstaining(_req: object) -> ExecutionResult:
+        # Default worker-job ctx: a fake executor that returns no value, so a run
+        # driven with this ctx abstains rather than fabricating an answer. Tests
+        # that assert a real answer inject their own scripted executor.
+        return ExecutionResult(
+            exit_class=ExitClass.OK,
+            image_ref="fake",
+            limits=ExecutionLimits(),
+            usage=ResourceUsage(wall_ms=1, program_exit_code=0),
+            result={"value": None},
+        )
+
     yield {
         "session_factory": async_sessionmaker(async_engine, expire_on_commit=False),
         "storage": storage,
+        "model": FakeModel(),
+        "executor": FakeExecutor(handler=_abstaining),
+        "limits": ExecutionLimits(),
     }

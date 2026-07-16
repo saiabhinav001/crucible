@@ -16,6 +16,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from crucible.application.ports import (
+    AgentAttemptRecord,
     ApiKeyRecord,
     AuditEntry,
     DatasetRecord,
@@ -499,6 +500,27 @@ class SqlRunRepository:
             .values(cancel_requested_at=_now())
         )
 
+    async def set_result(
+        self,
+        *,
+        run_id: uuid.UUID,
+        answer: dict[str, Any] | None,
+        verification: dict[str, Any] | None,
+    ) -> None:
+        await self._s.execute(
+            update(m.AgentRun)
+            .where(m.AgentRun.id == run_id)
+            .values(answer=answer, verification=verification, updated_at=_now())
+        )
+
+    async def is_cancel_requested(self, run_id: uuid.UUID) -> bool:
+        value = (
+            await self._s.execute(
+                select(m.AgentRun.cancel_requested_at).where(m.AgentRun.id == run_id)
+            )
+        ).scalar_one_or_none()
+        return value is not None
+
     async def append_event(
         self, *, run_id: uuid.UUID, event_type: RunEventType, payload: dict[str, Any]
     ) -> RunEventRecord:
@@ -563,7 +585,107 @@ class SqlRunRepository:
             cancel_requested_at=row.cancel_requested_at,
             created_at=row.created_at,
             updated_at=row.updated_at,
+            answer=row.answer,
+            verification=row.verification,
         )
+
+
+class SqlAgentStore:
+    """Agent attempts (append-only evidence) and resume checkpoints (upserted)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def append_attempt(
+        self,
+        *,
+        run_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        kind: str,
+        sequence_no: int,
+        payload: dict[str, Any],
+        model_provider: str | None = None,
+        model_id: str | None = None,
+        exit_class: str | None = None,
+        failure_category: str | None = None,
+        duration_ms: int | None = None,
+        cost_usd: float | None = None,
+        source_sha256: str | None = None,
+    ) -> None:
+        next_no = (
+            await self._s.execute(
+                select(func.coalesce(func.max(m.AgentAttempt.attempt_no), 0) + 1).where(
+                    m.AgentAttempt.run_id == run_id
+                )
+            )
+        ).scalar_one()
+        self._s.add(
+            m.AgentAttempt(
+                id=new_id(),
+                run_id=run_id,
+                organization_id=organization_id,
+                attempt_no=int(next_no),
+                kind=kind,
+                sequence_no=sequence_no,
+                payload=payload,
+                model_provider=model_provider,
+                model_id=model_id,
+                exit_class=exit_class,
+                failure_category=failure_category,
+                duration_ms=duration_ms,
+                cost_usd=cost_usd,
+                source_sha256=source_sha256,
+            )
+        )
+        await self._s.flush()
+
+    async def list_attempts(self, run_id: uuid.UUID) -> list[AgentAttemptRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.AgentAttempt)
+                .where(m.AgentAttempt.run_id == run_id)
+                .order_by(m.AgentAttempt.attempt_no)
+            )
+        ).scalars()
+        return [
+            AgentAttemptRecord(
+                run_id=r.run_id,
+                attempt_no=r.attempt_no,
+                kind=r.kind,
+                sequence_no=r.sequence_no,
+                payload=r.payload,
+                model_provider=r.model_provider,
+                model_id=r.model_id,
+                exit_class=r.exit_class,
+                failure_category=r.failure_category,
+                duration_ms=r.duration_ms,
+                cost_usd=r.cost_usd,
+                source_sha256=r.source_sha256,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]
+
+    async def save_checkpoint(self, *, run_id: uuid.UUID, node: str, state: dict[str, Any]) -> None:
+        row = (
+            await self._s.execute(
+                select(m.AgentCheckpoint).where(m.AgentCheckpoint.run_id == run_id)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            self._s.add(m.AgentCheckpoint(run_id=run_id, node=node, state=state))
+        else:
+            row.node = node
+            row.state = state
+        await self._s.flush()
+
+    async def load_checkpoint(self, run_id: uuid.UUID) -> tuple[str, dict[str, Any]] | None:
+        row = (
+            await self._s.execute(
+                select(m.AgentCheckpoint).where(m.AgentCheckpoint.run_id == run_id)
+            )
+        ).scalar_one_or_none()
+        return None if row is None else (row.node, row.state)
 
 
 class SqlAuditSink:

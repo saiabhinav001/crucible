@@ -54,5 +54,43 @@ Rules encoded by this diagram:
 3. The sandbox is outside the API/worker trust boundary (see ADR-003 and the threat model).
 4. Only redacted, hashed, access-controlled content crosses into observability providers.
 
-Container- and component-level diagrams (C4 L2/L3) are Phase 1–4 deliverables, created
-as the corresponding services come into existence — not speculated here.
+## Agent graph (Phase 4)
+
+The durable data-agent is an explicit typed graph (ADR-008): each node has one
+job, a typed output, and emits a trace event; the runner checkpoints after every
+node so a worker restart resumes from the last completed node.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Validate
+  Validate --> Profile
+  Validate --> Done: policy denied
+  Profile --> ExactCache
+  ExactCache --> Route: miss
+  Route --> Plan
+  Plan --> Code
+  Plan --> Done: abstain (unsupported)
+  Code --> Execute
+  Execute --> Observe
+  Observe --> Verify: execution ok
+  Observe --> Reflect: correctable & attempts remain
+  Observe --> Done: abstain (fatal / exhausted / oscillation)
+  Reflect --> Execute: repaired code (bounded, max 2)
+  Verify --> Synthesize: answer
+  Verify --> HumanReview: ambiguous
+  Verify --> Done: abstain (below threshold)
+  HumanReview --> Synthesize: approved (resume)
+  HumanReview --> Done: rejected
+  HumanReview --> [*]: interrupt (waiting_review)
+  Synthesize --> OutputGuard
+  OutputGuard --> Done: answered
+```
+
+Terminal reasons map to the Phase 2 run state machine; `agent_runs` stays the
+single source of truth for status, and `agent_checkpoints` holds only what is
+needed to resume. Model plan/code/repair use a provider-neutral gateway
+(`fake` deterministic backend by default; OpenAI-compatible contract for real
+models); generated code always runs in the Phase 3 sandbox.
+
+Container- and component-level diagrams (C4 L2/L3) beyond this are created as the
+corresponding services come into existence — not speculated here.

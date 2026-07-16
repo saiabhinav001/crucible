@@ -63,3 +63,18 @@ class WorkerAppSettings(BaseSettings):
     microvm_template_id: str | None = Field(
         default=None, validation_alias=AliasChoices("MICROVM_TEMPLATE_ID")
     )
+
+    # Model gateway for the agent (plan/code/repair). `fake` is deterministic and
+    # offline (default); `openai_compat` targets any OpenAI-compatible endpoint.
+    model_backend: Literal["fake", "openai_compat"] = Field(
+        default="fake", validation_alias=AliasChoices("MODEL_BACKEND")
+    )
+    openai_base_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENAI_BASE_URL")
+    )
+    openai_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENAI_API_KEY")
+    )
+    openai_model: str | None = Field(default=None, validation_alias=AliasChoices("OPENAI_MODEL"))
+
+    execution_wall_seconds: float = 20.0

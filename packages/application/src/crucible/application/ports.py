@@ -121,6 +121,25 @@ class RunRecord:
     cancel_requested_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    answer: dict[str, Any] | None = None
+    verification: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AgentAttemptRecord:
+    run_id: uuid.UUID
+    attempt_no: int
+    kind: str
+    sequence_no: int
+    payload: dict[str, Any]
+    model_provider: str | None
+    model_id: str | None
+    exit_class: str | None
+    failure_category: str | None
+    duration_ms: int | None
+    cost_usd: float | None
+    source_sha256: str | None
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,6 +12,7 @@ class AuditAction(StrEnum):
     DATASET_DOWNLOADED = "dataset.downloaded"
     RUN_CREATED = "run.created"
     RUN_CANCELLED = "run.cancelled"
+    RUN_REVIEW_SUBMITTED = "run.review_submitted"
     API_KEY_CREATED = "api_key.created"
     API_KEY_REVOKED = "api_key.revoked"
     ROLE_CHANGED = "membership.role_changed"

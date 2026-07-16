@@ -11,6 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from crucible.application import (
+    AgentAttemptRecord,
     ApiKeyRecord,
     DatasetRecord,
     DatasetVersionRecord,
@@ -128,6 +129,8 @@ class RunOut(BaseModel):
     terminal_detail: str | None
     failure_category: str | None
     cancel_requested: bool
+    answer: dict[str, Any] | None
+    verification: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
 
@@ -142,9 +145,47 @@ class RunOut(BaseModel):
             terminal_detail=record.terminal_detail,
             failure_category=record.failure_category,
             cancel_requested=record.cancel_requested_at is not None,
+            answer=record.answer,
+            verification=record.verification,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+
+class AttemptOut(BaseModel):
+    attempt_no: int
+    kind: str
+    sequence_no: int
+    payload: dict[str, Any]
+    model_provider: str | None
+    model_id: str | None
+    exit_class: str | None
+    failure_category: str | None
+    duration_ms: int | None
+    cost_usd: float | None
+    source_sha256: str | None
+    created_at: datetime
+
+    @classmethod
+    def of(cls, record: AgentAttemptRecord) -> AttemptOut:
+        return cls(
+            attempt_no=record.attempt_no,
+            kind=record.kind,
+            sequence_no=record.sequence_no,
+            payload=record.payload,
+            model_provider=record.model_provider,
+            model_id=record.model_id,
+            exit_class=record.exit_class,
+            failure_category=record.failure_category,
+            duration_ms=record.duration_ms,
+            cost_usd=record.cost_usd,
+            source_sha256=record.source_sha256,
+            created_at=record.created_at,
+        )
+
+
+class ReviewIn(BaseModel):
+    approve: bool
 
 
 class RunEventOut(BaseModel):

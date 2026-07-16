@@ -1,0 +1,247 @@
+"""Deterministic template model gateway.
+
+The `fake` backend never calls a network provider. Its planner is a small intent
+parser over the question and dataset profile; its coder is the deterministic
+polars generator. This makes the entire agent pipeline — plan, code, execute,
+verify, synthesize — runnable and testable offline, and produces genuinely
+correct answers for the bounded operation set (real execution still happens in
+the sandbox).
+
+For tests that need to drive specific graph branches (a repair that fixes a
+bug, a forced abstention), pass `scripts`: a per-role queue of canned responses
+that are popped in order before falling back to the template behavior.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import deque
+from typing import Any
+
+from crucible.agent.models.codegen import generate_source
+from crucible.agent.ports import ModelRole, ModelUsage
+from crucible.agent.schemas import (
+    AnalysisPlan,
+    AnswerKind,
+    Filter,
+    GeneratedCode,
+    Operation,
+)
+from crucible.agent.state import ColumnView
+
+_NUMERIC_PREFIXES = ("int", "float", "uint", "decimal")
+
+PROMPT_VERSION = "fake-templates@1"
+POLICY_VERSION = "static@1"
+
+
+def _is_numeric(dtype: str) -> bool:
+    return dtype.lower().startswith(_NUMERIC_PREFIXES)
+
+
+def _tokens(text: str) -> set[str]:
+    raw = re.split(r"[^a-z0-9]+", text.lower())
+    # Singularize crudely so "customers" matches a "customer_id" column.
+    return {t[:-1] if len(t) > 4 and t.endswith("s") else t for t in raw if t}
+
+
+def _fuzzy_hit(col_tokens: set[str], q_tokens: set[str]) -> bool:
+    if col_tokens & q_tokens:
+        return True
+    # Prefix overlap for tokens of reasonable length (region ~ regional).
+    return any(
+        len(a) >= 4 and len(b) >= 4 and (a.startswith(b) or b.startswith(a))
+        for a in col_tokens
+        for b in q_tokens
+    )
+
+
+def _match_column(
+    columns: list[ColumnView], q_tokens: set[str], *, numeric: bool | None = None
+) -> ColumnView | None:
+    for col in columns:
+        if numeric is True and not _is_numeric(col.dtype):
+            continue
+        if numeric is False and _is_numeric(col.dtype):
+            continue
+        if _fuzzy_hit(_tokens(col.name), q_tokens):
+            return col
+    return None
+
+
+class FakeModel:
+    def __init__(self, scripts: dict[ModelRole, list[Any]] | None = None) -> None:
+        self._scripts: dict[ModelRole, deque[Any]] = {
+            role: deque(items) for role, items in (scripts or {}).items()
+        }
+
+    # ---------------------------------------------------------------- manifest
+    def manifest(self) -> dict[str, dict[str, Any]]:
+        return {
+            role.value: {
+                "provider": "fake",
+                "model_id": "fake-template",
+                "prompt_version": PROMPT_VERSION,
+                "policy_version": POLICY_VERSION,
+                "params": {},
+            }
+            for role in (ModelRole.PLANNER, ModelRole.CODER, ModelRole.REPAIR)
+        }
+
+    def _scripted(self, role: ModelRole) -> Any | None:
+        queue = self._scripts.get(role)
+        return queue.popleft() if queue else None
+
+    @staticmethod
+    def _usage() -> ModelUsage:
+        return ModelUsage(provider="fake", model_id="fake-template", cost_usd=0.0)
+
+    # -------------------------------------------------------------------- plan
+    async def plan(
+        self, *, question: str, profile: list[ColumnView]
+    ) -> tuple[AnalysisPlan, ModelUsage]:
+        scripted = self._scripted(ModelRole.PLANNER)
+        if isinstance(scripted, AnalysisPlan):
+            return scripted, self._usage()
+        return self._plan_from_question(question, profile), self._usage()
+
+    def _plan_from_question(self, question: str, profile: list[ColumnView]) -> AnalysisPlan:
+        q = question.lower()
+        qt = _tokens(question)
+
+        def abstain(reason: str) -> AnalysisPlan:
+            return AnalysisPlan(
+                operation=Operation.ABSTAIN,
+                answer_kind=AnswerKind.ABSTAIN,
+                rationale=reason,
+                confidence=0.0,
+            )
+
+        # Missing / null values.
+        if any(w in q for w in ("missing", "null", "empty", "blank")):
+            col = _match_column(profile, qt)
+            if col is None:
+                return abstain("no column in the question matches the dataset schema")
+            return AnalysisPlan(
+                operation=Operation.MISSING_COUNT,
+                answer_kind=AnswerKind.INTEGER_SCALAR,
+                target_column=col.name,
+                referenced_columns=[col.name],
+                rationale=f"count missing values in {col.name}",
+            )
+
+        # Distinct / unique count.
+        if any(w in q for w in ("distinct", "unique")):
+            col = _match_column(profile, qt)
+            if col is None:
+                return abstain("no column matches for a distinct count")
+            return AnalysisPlan(
+                operation=Operation.COUNT_DISTINCT,
+                answer_kind=AnswerKind.INTEGER_SCALAR,
+                target_column=col.name,
+                referenced_columns=[col.name],
+                rationale=f"distinct values of {col.name}",
+            )
+
+        # Superlative over groups: which <group> has the highest/most <metric>.
+        superlative_hi = any(
+            w in q for w in ("highest", "largest", "most", "maximum", "top", "greatest")
+        )
+        superlative_lo = any(w in q for w in ("lowest", "smallest", "least", "minimum", "fewest"))
+        if superlative_hi or superlative_lo:
+            group = _match_column(profile, qt, numeric=False)
+            target = _match_column(profile, qt, numeric=True)
+            if group is not None:
+                op = Operation.MAX_BY_GROUP if superlative_hi else Operation.MIN_BY_GROUP
+                refs = [group.name] + ([target.name] if target else [])
+                return AnalysisPlan(
+                    operation=op,
+                    answer_kind=AnswerKind.CATEGORICAL_SCALAR,
+                    group_column=group.name,
+                    target_column=target.name if target else None,
+                    referenced_columns=refs,
+                    rationale=f"{op.value} over {group.name}",
+                    confidence=1.0 if target else 0.8,
+                )
+            return abstain("a superlative question needs a grouping column")
+
+        # Average / mean.
+        if any(w in q for w in ("average", "mean", "avg")):
+            col = _match_column(profile, qt, numeric=True)
+            if col is None:
+                return abstain("no numeric column matches for an average")
+            return AnalysisPlan(
+                operation=Operation.MEAN,
+                answer_kind=AnswerKind.NUMERIC_SCALAR,
+                target_column=col.name,
+                referenced_columns=[col.name],
+                rationale=f"mean of {col.name}",
+            )
+
+        # Total / sum.
+        if any(w in q for w in ("total", "sum")):
+            col = _match_column(profile, qt, numeric=True)
+            if col is None:
+                return abstain("no numeric column matches for a total")
+            return AnalysisPlan(
+                operation=Operation.SUM,
+                answer_kind=AnswerKind.NUMERIC_SCALAR,
+                target_column=col.name,
+                referenced_columns=[col.name],
+                rationale=f"sum of {col.name}",
+            )
+
+        # Plain count (optionally filtered): how many / number of.
+        if any(w in q for w in ("how many", "number of", "count")):
+            filt = self._parse_filter(question, profile)
+            refs = [filt.column] if filt else []
+            return AnalysisPlan(
+                operation=Operation.COUNT,
+                answer_kind=AnswerKind.INTEGER_SCALAR,
+                filter=filt,
+                referenced_columns=refs,
+                rationale="row count" + (" with a filter" if filt else ""),
+            )
+
+        return abstain("the question does not map to a supported analysis")
+
+    @staticmethod
+    def _parse_filter(question: str, profile: list[ColumnView]) -> Filter | None:
+        # A deliberately narrow pattern: "... <column> is/= <value>" or
+        # "... in <value>". Anything more complex abstains rather than guess.
+        m = re.search(
+            r"(?:where|with|for)\s+(\w+)\s*(?:is|=|==|equals?)\s*([\w-]+)", question, re.I
+        )
+        if not m:
+            return None
+        col_token, value = m.group(1), m.group(2)
+        col = _match_column(profile, _tokens(col_token), numeric=None)
+        if col is None:
+            return None
+        return Filter(column=col.name, op="==", value=value)
+
+    # -------------------------------------------------------------------- code
+    async def code(
+        self, *, plan: AnalysisPlan, profile: list[ColumnView]
+    ) -> tuple[GeneratedCode, ModelUsage]:
+        scripted = self._scripted(ModelRole.CODER)
+        if isinstance(scripted, (GeneratedCode, str)):
+            src = scripted.source if isinstance(scripted, GeneratedCode) else scripted
+            return GeneratedCode(source=src, explanation="scripted"), self._usage()
+        return GeneratedCode(
+            source=generate_source(plan), explanation=plan.rationale
+        ), self._usage()
+
+    # ------------------------------------------------------------------ repair
+    async def repair(
+        self, *, plan: AnalysisPlan, profile: list[ColumnView], prior_code: str, error: str
+    ) -> tuple[GeneratedCode, ModelUsage]:
+        scripted = self._scripted(ModelRole.REPAIR)
+        if isinstance(scripted, (GeneratedCode, str)):
+            src = scripted.source if isinstance(scripted, GeneratedCode) else scripted
+            return GeneratedCode(source=src, explanation="scripted repair"), self._usage()
+        # The template coder is deterministic, so regenerating the same plan
+        # yields the same code. That is intentional: a deterministic error will
+        # reproduce, the oscillation guard will fire, and the run abstains rather
+        # than looping. (A real model would attempt an actual fix here.)
+        return GeneratedCode(source=generate_source(plan), explanation="regenerated"), self._usage()

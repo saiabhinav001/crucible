@@ -36,8 +36,45 @@ export type Run = {
   terminal_detail: string | null;
   failure_category: string | null;
   cancel_requested: boolean;
+  answer: {
+    value: unknown;
+    text: string;
+    limitations: string;
+    provenance: {
+      operation: string;
+      columns_used: string[];
+      code_sha256: string;
+      attempt_count: number;
+      executor_backend: string;
+      image_ref: string;
+      dataset_sha256: string | null;
+    };
+  } | null;
+  verification: Record<string, unknown> | null;
+  config_manifest: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type RunEvent = {
+  sequence_no: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type Attempt = {
+  attempt_no: number;
+  kind: string;
+  sequence_no: number;
+  payload: Record<string, unknown>;
+  model_provider: string | null;
+  model_id: string | null;
+  exit_class: string | null;
+  failure_category: string | null;
+  duration_ms: number | null;
+  source_sha256: string | null;
+  created_at: string;
 };
 
 export class NotConfigured extends Error {}
@@ -62,3 +99,6 @@ export const listDatasets = () => get<Dataset[]>("/v1/datasets");
 export const listVersions = (datasetId: string) =>
   get<DatasetVersion[]>(`/v1/datasets/${datasetId}/versions`);
 export const listRuns = () => get<Run[]>("/v1/runs?limit=50");
+export const getRun = (runId: string) => get<Run>(`/v1/runs/${runId}`);
+export const getRunEvents = (runId: string) => get<RunEvent[]>(`/v1/runs/${runId}/events`);
+export const getRunAttempts = (runId: string) => get<Attempt[]>(`/v1/runs/${runId}/attempts`);

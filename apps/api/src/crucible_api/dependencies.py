@@ -25,6 +25,7 @@ from crucible.application import (
     VerifiedIdentity,
 )
 from crucible.db import (
+    SqlAgentStore,
     SqlAuditSink,
     SqlDatasetRepository,
     SqlIdentityRepository,
@@ -90,10 +91,15 @@ def audit_sink(session: SessionDep) -> SqlAuditSink:
     return SqlAuditSink(session)
 
 
+def agent_store(session: SessionDep) -> SqlAgentStore:
+    return SqlAgentStore(session)
+
+
 IdentityRepoDep = Annotated[SqlIdentityRepository, Depends(identity_repo)]
 DatasetRepoDep = Annotated[SqlDatasetRepository, Depends(dataset_repo)]
 RunRepoDep = Annotated[SqlRunRepository, Depends(run_repo)]
 AuditDep = Annotated[SqlAuditSink, Depends(audit_sink)]
+AgentStoreDep = Annotated[SqlAgentStore, Depends(agent_store)]
 
 
 async def get_principal(

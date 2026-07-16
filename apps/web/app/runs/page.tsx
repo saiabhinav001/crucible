@@ -32,7 +32,9 @@ export default async function RunsPage() {
           headers={["Run", "Question", "Status", "Outcome", "Created"]}
           empty="No runs yet. POST /v1/runs with a ready dataset version."
           rows={runs.map((run) => [
-            <Mono key="id">{run.id.slice(0, 8)}</Mono>,
+            <a key="id" href={`/runs/${run.id}`} style={{ color: "#58a6ff" }}>
+              <Mono>{run.id.slice(0, 8)}</Mono>
+            </a>,
             <span key="q" style={{ display: "block", maxWidth: 320 }}>
               {run.question}
             </span>,

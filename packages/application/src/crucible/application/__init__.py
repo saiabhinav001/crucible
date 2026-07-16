@@ -19,8 +19,15 @@ from crucible.application.commands.datasets import (
     StartUploadInput,
     StartUploadResult,
 )
-from crucible.application.commands.runs import CancelRun, CreateRun, CreateRunInput, request_hash
+from crucible.application.commands.runs import (
+    CancelRun,
+    CreateRun,
+    CreateRunInput,
+    ResolveRunReview,
+    request_hash,
+)
 from crucible.application.ports import (
+    AgentAttemptRecord,
     ApiKeyRecord,
     AuditEntry,
     AuditSink,
@@ -40,11 +47,13 @@ from crucible.application.ports import (
     UserRecord,
 )
 from crucible.application.queries.reads import (
+    AttemptReader,
     GetDatasetVersion,
     GetRun,
     ListApiKeys,
     ListDatasets,
     ListDatasetVersions,
+    ListRunAttempts,
     ListRunEvents,
     ListRuns,
 )
@@ -56,7 +65,9 @@ from crucible.application.services.authenticate import (
 )
 
 __all__ = [
+    "AgentAttemptRecord",
     "ApiKeyRecord",
+    "AttemptReader",
     "AuditEntry",
     "AuditSink",
     "CancelRun",
@@ -81,12 +92,14 @@ __all__ = [
     "ListApiKeys",
     "ListDatasetVersions",
     "ListDatasets",
+    "ListRunAttempts",
     "ListRunEvents",
     "ListRuns",
     "MembershipRecord",
     "ObjectStore",
     "RateLimiter",
     "ResolveApiKeyPrincipal",
+    "ResolveRunReview",
     "ResolveUserPrincipal",
     "RevokeApiKey",
     "RunEventRecord",

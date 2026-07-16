@@ -17,12 +17,15 @@ from crucible.application import (
     CreateRun,
     CreateRunInput,
     GetRun,
+    ListRunAttempts,
     ListRunEvents,
     ListRuns,
+    ResolveRunReview,
 )
 from crucible.db import SqlRunRepository
 from crucible.domain import TERMINAL_RUN_STATES, Principal, RunStatus
 from crucible_api.dependencies import (
+    AgentStoreDep,
     AuditDep,
     DatasetRepoDep,
     PrincipalDep,
@@ -32,7 +35,7 @@ from crucible_api.dependencies import (
     run_rate_limit,
 )
 from crucible_api.queue import ArqJobQueue
-from crucible_api.schemas import CreateRunIn, RunEventOut, RunOut
+from crucible_api.schemas import AttemptOut, CreateRunIn, ReviewIn, RunEventOut, RunOut
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
 
@@ -104,6 +107,33 @@ async def cancel_run(
     request_id: RequestIdDep,
 ) -> RunOut:
     record = await CancelRun(runs=runs, audit=audit)(principal, run_id, request_id=request_id)
+    return RunOut.of(record)
+
+
+@router.get("/{run_id}/attempts", response_model=list[AttemptOut])
+async def list_attempts(
+    run_id: uuid.UUID,
+    principal: PrincipalDep,
+    runs: RunRepoDep,
+    attempts: AgentStoreDep,
+) -> list[AttemptOut]:
+    records = await ListRunAttempts(runs=runs, attempts=attempts)(principal, run_id)
+    return [AttemptOut.of(r) for r in records]
+
+
+@router.post("/{run_id}/review", response_model=RunOut)
+async def submit_review(
+    run_id: uuid.UUID,
+    body: ReviewIn,
+    request: Request,
+    principal: PrincipalDep,
+    runs: RunRepoDep,
+    audit: AuditDep,
+    request_id: RequestIdDep,
+) -> RunOut:
+    record = await ResolveRunReview(
+        runs=runs, queue=ArqJobQueue(request.app.state.queue_pool), audit=audit
+    )(principal, run_id, approve=body.approve, request_id=request_id)
     return RunOut.of(record)
 
 

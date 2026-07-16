@@ -60,16 +60,31 @@ curl -X POST $API/v1/runs -H "Authorization: Bearer $KEY" \
 # 202 Accepted, Location: /v1/runs/{id}
 ```
 
-Poll `GET /v1/runs/{id}`, list history with `GET /v1/runs/{id}/events`, or stream
+Poll `GET /v1/runs/{id}`, list history with `GET /v1/runs/{id}/events`, inspect the
+per-step reasoning with `GET /v1/runs/{id}/attempts`, or stream
 `GET /v1/runs/{id}/stream` (SSE). `POST /v1/runs/{id}/cancel` cancels a queued run
 immediately and asks a running one to stop at its next checkpoint.
 
 Replaying an `Idempotency-Key` with the same body returns the original run (200,
 not 202). Replaying it with a *different* body is a 409 — keys are never merged.
 
-> **Phase 2 truthfulness:** the agent does not exist until Phase 4. A run today is
-> accepted, claimed, and terminated as `abstained` with an explicit reason. It
-> does not fabricate an answer to look finished.
+### What the agent returns (Phase 4)
+
+A terminal run carries one of:
+
+- **`answered`** — `answer` holds the value, a mechanically-synthesized `text`, and
+  `provenance` (operation, columns used, code hash, attempt count, executor
+  backend/image). `verification` shows the checks that gated the answer.
+- **`abstained`** — the question is unsupported, or execution failed in a way a
+  bounded repair could not fix. No fabricated value; `terminal_detail` says why.
+- **`waiting_review`** — an ambiguous result (e.g. a tie) routed to a human. A
+  reviewer resolves it with `POST /v1/runs/{id}/review {"approve": bool}`
+  (requires `review:submit`); approve resumes to an answer, reject abstains.
+
+The answer text is derived from the verified result, so it can never claim more
+than the computed number. Generated code always runs in the sandbox (Phase 3);
+the deployment's executor backend determines whether real computation is
+available (`fake` returns no value and the run abstains).
 
 ## Endpoints
 

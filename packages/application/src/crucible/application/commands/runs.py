@@ -123,7 +123,10 @@ class CreateRun:
             "dataset_version_id": str(version.id),
             "dataset_content_sha256": version.content_sha256,
             "dataset_schema_hash": version.schema_hash,
-            "agent": {"status": "not_implemented", "phase": "P4"},
+            # The workflow contract; the concrete model/prompt/policy versions are
+            # recorded per attempt by the agent (they are worker-time, not
+            # request-time, inputs).
+            "agent": {"workflow": "durable-graph@1"},
         }
 
         run = await self._runs.create_run(
@@ -230,3 +233,41 @@ class CancelRun:
                 metadata={"outcome": outcome},
             )
         )
+
+
+class ResolveRunReview:
+    """A reviewer approves or rejects a run waiting for human review. The agent
+    graph resumes asynchronously (approve → synthesize, reject → abstain)."""
+
+    def __init__(self, *, runs: RunRepository, queue: JobQueue, audit: AuditSink) -> None:
+        self._runs = runs
+        self._queue = queue
+        self._audit = audit
+
+    async def __call__(
+        self, principal: Principal, run_id: uuid.UUID, *, approve: bool, request_id: str = ""
+    ) -> RunRecord:
+        if not principal.can(Permission.REVIEW_SUBMIT):
+            raise PermissionDenied()
+        run = await self._runs.get_run(organization_id=principal.organization_id, run_id=run_id)
+        if run is None:
+            raise NotFound("Run")
+        if run.status is not RunStatus.WAITING_REVIEW:
+            raise Conflict(
+                f"Run is '{run.status.value}', not awaiting review.", code="run-not-in-review"
+            )
+        await self._queue.enqueue("resolve_run_review", str(run.id), approve)
+        await self._audit.record(
+            AuditEntry(
+                organization_id=principal.organization_id,
+                actor_type=principal.actor_type,
+                actor_id=principal.actor_id,
+                action=AuditAction.RUN_REVIEW_SUBMITTED,
+                result=AuditResult.ALLOWED,
+                target_type="run",
+                target_id=str(run_id),
+                request_id=request_id,
+                metadata={"decision": "approve" if approve else "reject"},
+            )
+        )
+        return run
