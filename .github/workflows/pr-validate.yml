@@ -117,7 +117,20 @@ jobs:
       - run: uv sync --dev --frozen
       - name: Build the sandbox runner image
         run: docker build -f infra/docker/runner.Dockerfile -t crucible-sandbox-runner:local .
-      - name: Run sandbox canaries (containment must hold)
+      - name: Run sandbox canaries + agent/eval E2E (containment + real answers)
         env:
           SANDBOX_WORK_ROOT: ${{ github.workspace }}/.sandbox_runs
         run: uv run pytest -m sandbox -p no:cacheprovider
+      - name: Smoke evaluation gate (candidate vs frozen baseline)
+        run: |
+          uv run python -m crucible.evaluation run \
+            --suite evals/suites/core-v1.0.0.yaml \
+            --baseline evals/baseline.json --smoke --executor docker \
+            --out evals/reports
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/reports/*.json
+          if-no-files-found: ignore

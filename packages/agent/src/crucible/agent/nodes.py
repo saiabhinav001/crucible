@@ -243,7 +243,13 @@ class AgentNodes:
             columns_exist=all(c in known for c in state.plan.referenced_columns),
             execution_ok=ev.ok,
             result_schema_valid="value" in result and result.get("value") is not None,
-            provenance_present=bool(result.get("columns_used") or state.plan.referenced_columns),
+            # A full-table operation (e.g. a row count) legitimately uses no
+            # columns; its provenance is the operation itself over the dataset.
+            provenance_present=bool(
+                result.get("operation")
+                or result.get("columns_used")
+                or state.plan.referenced_columns
+            ),
             policy_ok=ev.exit_class != "policy_violation",
             ambiguous=bool(result.get("ambiguous")),
         )

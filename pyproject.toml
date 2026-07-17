@@ -11,6 +11,7 @@ dependencies = [
     "crucible-storage",
     "crucible-execution",
     "crucible-agent",
+    "crucible-evaluation",
     "crucible-api",
     "crucible-worker",
 ]
@@ -38,6 +39,7 @@ members = [
     "packages/storage",
     "packages/execution",
     "packages/agent",
+    "packages/evaluation",
     "apps/api",
     "apps/worker",
 ]
@@ -50,6 +52,7 @@ crucible-security = { workspace = true }
 crucible-storage = { workspace = true }
 crucible-execution = { workspace = true }
 crucible-agent = { workspace = true }
+crucible-evaluation = { workspace = true }
 crucible-api = { workspace = true }
 crucible-worker = { workspace = true }
 
@@ -67,6 +70,7 @@ ignore = ["E501"]  # line length handled by formatter
 "tests/**" = ["T20"]
 "evals/references/**" = ["T20"]  # reference calculators intentionally print
 "scripts/**" = ["T20"]  # operator CLIs print their results
+"**/cli.py" = ["T20"]  # the evaluation CLI prints its report summary
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -81,6 +85,7 @@ mypy_path = [
     "packages/storage/src",
     "packages/execution/src",
     "packages/agent/src",
+    "packages/evaluation/src",
     "apps/api/src",
     "apps/worker/src",
 ]
@@ -89,7 +94,7 @@ namespace_packages = true
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
-module = ["arq.*", "boto3.*", "botocore.*", "docker.*"]
+module = ["arq.*", "boto3.*", "botocore.*", "docker.*", "yaml.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
@@ -117,7 +122,8 @@ forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
     "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
     "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
-    "crucible.execution", "crucible.agent", "crucible_api", "crucible_worker",
+    "crucible.execution", "crucible.agent", "crucible.evaluation",
+    "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -128,7 +134,7 @@ forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
     "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
     "crucible.db", "crucible.security", "crucible.storage", "crucible.execution",
-    "crucible.agent", "crucible_api", "crucible_worker",
+    "crucible.agent", "crucible.evaluation", "crucible_api", "crucible_worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -155,5 +161,15 @@ type = "forbidden"
 source_modules = ["crucible.agent"]
 forbidden_modules = [
     "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
-    "crucible_api", "crucible_worker", "fastapi", "starlette", "sqlalchemy", "boto3",
+    "crucible.evaluation", "crucible_api", "crucible_worker",
+    "fastapi", "starlette", "sqlalchemy", "boto3",
+]
+
+[[tool.importlinter.contracts]]
+name = "evaluation plane is decoupled from the serving plane"
+type = "forbidden"
+source_modules = ["crucible.evaluation"]
+forbidden_modules = [
+    "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
+    "crucible_api", "crucible_worker", "fastapi", "starlette", "sqlalchemy", "boto3", "redis", "arq",
 ]

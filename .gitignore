@@ -16,8 +16,10 @@ next-env.d.ts
 .env
 .env.*.local
 
-# Generated eval reports (examples are committed explicitly if needed)
+# Generated eval reports (committed examples under evals/reports/examples/)
 evals/reports/
+!evals/reports/examples/
+!evals/reports/examples/**
 
 # Per-run sandbox working directories (inputs/outputs for the Docker executor)
 .sandbox_runs/

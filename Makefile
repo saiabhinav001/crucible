@@ -45,6 +45,14 @@ sandbox:              ## Run the sandbox containment canaries (needs the image)
 evals:                ## Seed-suite reference calculators
 	uv run python evals/references/run_all.py
 
+eval-run:             ## Run the core suite vs the frozen baseline and gate (needs the runner image)
+	uv run python -m crucible.evaluation run --suite evals/suites/core-v1.0.0.yaml \
+		--baseline evals/baseline.json --executor docker --out evals/reports
+
+eval-baseline:        ## Regenerate the frozen baseline (reviewed change only)
+	uv run python -m crucible.evaluation baseline --suite evals/suites/core-v1.0.0.yaml \
+		--executor docker --out evals/baseline.json --approved-by "$(USER)"
+
 up:                   ## Local stack (add --profile full for web)
 	docker compose up -d
 

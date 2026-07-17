@@ -10,12 +10,39 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 4 complete (durable data-agent MVP)
+## Status: Phase 5 complete (offline evaluation harness + regression gate)
 
-Phases 0–3 defined the workload, built the platform and data plane, and proved
-the execution sandbox. **Phase 4 is the agent**: it plans an analysis, generates
-code, runs it in the Phase 3 sandbox, verifies, and either answers with
-provenance, abstains truthfully, or routes to human review.
+Phases 0–4 built the platform, data plane, sandbox, and the durable agent.
+**Phase 5 is the crown jewel**: an executable regression gate. It runs the real
+agent over versioned cases, scores against trusted oracles, and compares a
+candidate to a frozen baseline with a paired bootstrap confidence interval.
+
+- **Versioned suites, verified gold.** Every gold answer in the core suite is
+  cross-checked against an independent, executable reference calculator; fixtures
+  are pinned by SHA-256; released cases are immutable (the baseline pins the
+  suite hash, so an edit fails the lineage test).
+- **Scorer hierarchy, kept separate.** Tier 1 correctness (exact / numeric-
+  tolerance / result-set / behavioral-abstention) is the gate; Tier 3 policy
+  checks are hard gates. They never blend — a wrong answer is never rescued by a
+  clean policy check, and code running is never mistaken for a correct answer.
+- **Paired comparison + gate.** The gate BLOCKs a material regression (upper CI
+  bound below tolerance) or any policy failure, FLAGs an inconclusive regression
+  for review, and never calls a change an improvement when the interval spans
+  zero. The bootstrap uses a fixed seed, so the interval is reproducible.
+- **It catches real regressions.** Building it surfaced two genuine agent bugs
+  (fixed); a deliberately injected regression is blocked end-to-end through the
+  real sandbox.
+
+```bash
+make sandbox-image                          # build the runner
+make eval-run                               # score the core suite vs the frozen baseline, gate
+```
+
+<details><summary>Earlier: Phase 4 — durable data-agent MVP</summary>
+
+The agent plans an analysis, generates code, runs it in the Phase 3 sandbox,
+verifies, and either answers with provenance, abstains truthfully, or routes to
+human review.
 
 - **Explicit durable graph** (ADR-008): validate → profile → plan → code →
   execute → observe → repair (bounded, max 2) → verify → synthesize. It
@@ -38,6 +65,8 @@ provenance, abstains truthfully, or routes to human review.
 make sandbox-image                    # build the runner
 uv run pytest -m sandbox              # agent computes real answers in the sandbox
 ```
+
+</details>
 
 <details><summary>Earlier: Phase 3 — isolated execution boundary + safety canaries</summary>
 

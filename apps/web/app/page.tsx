@@ -91,6 +91,9 @@ export default function Home() {
         <a style={{ color: "#58a6ff" }} href="/runs">
           Runs
         </a>
+        <a style={{ color: "#58a6ff" }} href="/evaluations">
+          Evaluations
+        </a>
         <a style={{ color: "#58a6ff" }} href={`${API_URL}/docs`}>
           API docs
         </a>

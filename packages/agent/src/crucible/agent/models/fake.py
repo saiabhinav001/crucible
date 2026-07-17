@@ -41,8 +41,9 @@ def _is_numeric(dtype: str) -> bool:
 
 def _tokens(text: str) -> set[str]:
     raw = re.split(r"[^a-z0-9]+", text.lower())
-    # Singularize crudely so "customers" matches a "customer_id" column.
-    return {t[:-1] if len(t) > 4 and t.endswith("s") else t for t in raw if t}
+    # Singularize crudely so "customers"/"reps"/"rows" match "customer_id"/"rep"/
+    # "row" columns. Threshold >3 so 4-letter plurals like "reps" collapse too.
+    return {t[:-1] if len(t) > 3 and t.endswith("s") else t for t in raw if t}
 
 
 def _fuzzy_hit(col_tokens: set[str], q_tokens: set[str]) -> bool:

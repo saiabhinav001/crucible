@@ -12,8 +12,35 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from crucible.agent import ColumnView, DatasetView, RunView
+from crucible.agent import AnalysisPlan, ColumnView, DatasetView, FakeModel, ModelUsage, RunView
 from crucible.execution import ExecutionLimits, ExecutionResult, ExitClass, ResourceUsage
+
+_NUMERIC = ("int", "float", "uint", "decimal")
+
+
+class RegressedFakeModel(FakeModel):
+    """A deliberately regressed planner: it swaps a plan's target column for a
+    different column of the same type, so computed answers come out wrong. Used
+    to prove the evaluation harness catches an injected regression."""
+
+    async def plan(
+        self, *, question: str, profile: list[ColumnView]
+    ) -> tuple[AnalysisPlan, ModelUsage]:
+        plan, usage = await super().plan(question=question, profile=profile)
+        target = plan.target_column
+        if target is None:
+            return plan, usage
+        is_num = any(c.name == target and c.dtype.lower().startswith(_NUMERIC) for c in profile)
+        pool = [
+            c.name
+            for c in profile
+            if c.name != target and (c.dtype.lower().startswith(_NUMERIC) == is_num)
+        ]
+        if not pool:
+            return plan, usage
+        wrong = pool[0]
+        refs = [wrong if r == target else r for r in plan.referenced_columns]
+        return plan.model_copy(update={"target_column": wrong, "referenced_columns": refs}), usage
 
 
 @dataclass

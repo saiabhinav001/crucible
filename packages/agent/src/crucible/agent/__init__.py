@@ -6,6 +6,7 @@ adapters.
 """
 
 from crucible.agent.errors import AgentError, ModelNotConfigured, ModelUnavailable
+from crucible.agent.evaluate import EphemeralPersistence, EvalTrace, run_to_completion
 from crucible.agent.graph import GraphRunner
 from crucible.agent.models import FakeModel, OpenAICompatModel
 from crucible.agent.nodes import AgentContext, AgentNodes
@@ -50,6 +51,8 @@ __all__ = [
     "AttemptRecord",
     "ColumnView",
     "DatasetView",
+    "EphemeralPersistence",
+    "EvalTrace",
     "ExecutionEvidence",
     "FakeModel",
     "GeneratedCode",
@@ -70,4 +73,5 @@ __all__ = [
     "VerificationVector",
     "resolve_review",
     "run_agent",
+    "run_to_completion",
 ]

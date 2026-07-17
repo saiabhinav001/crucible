@@ -14,6 +14,7 @@ members = [
     "crucible-application",
     "crucible-db",
     "crucible-domain",
+    "crucible-evaluation",
     "crucible-execution",
     "crucible-security",
     "crucible-storage",
@@ -464,6 +465,27 @@ version = "0.1.0"
 source = { editable = "packages/domain" }
 
 [[package]]
+name = "crucible-evaluation"
+version = "0.1.0"
+source = { editable = "packages/evaluation" }
+dependencies = [
+    { name = "crucible-agent" },
+    { name = "crucible-domain" },
+    { name = "crucible-execution" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "crucible-agent", editable = "packages/agent" },
+    { name = "crucible-domain", editable = "packages/domain" },
+    { name = "crucible-execution", editable = "packages/execution" },
+    { name = "pydantic", specifier = ">=2.9,<3" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+]
+
+[[package]]
 name = "crucible-execution"
 version = "0.1.0"
 source = { editable = "packages/execution" }
@@ -556,6 +578,7 @@ dependencies = [
     { name = "crucible-application" },
     { name = "crucible-db" },
     { name = "crucible-domain" },
+    { name = "crucible-evaluation" },
     { name = "crucible-execution" },
     { name = "crucible-security" },
     { name = "crucible-storage" },
@@ -580,6 +603,7 @@ requires-dist = [
     { name = "crucible-application", editable = "packages/application" },
     { name = "crucible-db", editable = "packages/db" },
     { name = "crucible-domain", editable = "packages/domain" },
+    { name = "crucible-evaluation", editable = "packages/evaluation" },
     { name = "crucible-execution", editable = "packages/execution" },
     { name = "crucible-security", editable = "packages/security" },
     { name = "crucible-storage", editable = "packages/storage" },
