@@ -1,3 +1,7 @@
 packages:
   - apps/web
   - packages/ui
+# sharp is Next's optional image-optimizer native dep; we don't use next/image,
+# so its postinstall build script stays disallowed (deterministic installs).
+allowBuilds:
+  sharp: false

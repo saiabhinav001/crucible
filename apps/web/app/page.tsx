@@ -2,7 +2,7 @@
 // path (no credential) so a first-time visitor sees whether the platform is up,
 // then points them at the full journey — upload → run → evidence → compare →
 // review — each completable in the UI.
-import { Callout, MetricGrid, Panel } from "@crucible/ui";
+import { Callout, MetricGrid } from "@crucible/ui";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -55,10 +55,13 @@ export default async function Home() {
         </Callout>
       )}
 
-      <Panel title="The user journey">
+      <section aria-labelledby="journey-title" style={{ marginTop: "var(--space-6)" }}>
+        <h2 id="journey-title" className="cru-panel-title">
+          The user journey
+        </h2>
         <MetricGrid>
           {JOURNEY.map((j) => (
-            <Link key={j.step} href={j.href} className="cru-metric" style={{ textDecoration: "none" }}>
+            <Link key={j.step} href={j.href} className="cru-metric">
               <div className="cru-metric-value" style={{ fontSize: "1rem" }}>
                 {j.step}
               </div>
@@ -68,7 +71,7 @@ export default async function Home() {
             </Link>
           ))}
         </MetricGrid>
-      </Panel>
+      </section>
     </>
   );
 }

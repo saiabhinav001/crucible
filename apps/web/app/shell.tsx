@@ -17,6 +17,33 @@ const NAV = [
   { href: "/settings", label: "Settings" },
 ];
 
+/** The Crucible mark: a vessel over a flame line — one weight, one color. */
+function BrandMark() {
+  return (
+    <svg
+      className="cru-brand-mark"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M4.5 5h15l-2.1 8.4a5.6 5.6 0 0 1-10.8 0L4.5 5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.5 21h7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "";
   return (
@@ -27,7 +54,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="cru-header">
         <div className="cru-header-inner">
           <Link className="cru-brand" href="/">
-            ⬡ Crucible
+            <BrandMark />
+            Crucible
           </Link>
           <nav className="cru-nav" aria-label="Primary">
             {NAV.map((item) => {

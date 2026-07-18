@@ -202,3 +202,33 @@ export function KeyValue({ items }: { items: [string, ReactNode][] }) {
 export function Pre({ children }: { children: ReactNode }) {
   return <pre className="cru-pre">{children}</pre>;
 }
+
+/**
+ * Loading placeholder: a column of pulsing bars with staggered widths so the
+ * skeleton suggests content shape rather than a uniform block. Purely
+ * presentational — pages render it from route-level `loading.tsx` files.
+ */
+export function Skeleton({ lines = 4 }: { lines?: number }) {
+  const widths = ["62%", "94%", "83%", "71%", "89%", "58%"];
+  return (
+    <div role="status" aria-label="Loading" className="cru-panel-pad">
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="cru-skeleton" style={{ width: widths[i % widths.length] }} />
+      ))}
+    </div>
+  );
+}
+
+/** Standard page-level loading frame: a title bar plus a skeleton panel. */
+export function PageSkeleton() {
+  return (
+    <div aria-busy="true">
+      <span className="cru-skeleton" style={{ width: 180, height: 22 }} />
+      <div className="cru-panel">
+        <div className="cru-panel-body">
+          <Skeleton lines={5} />
+        </div>
+      </div>
+    </div>
+  );
+}

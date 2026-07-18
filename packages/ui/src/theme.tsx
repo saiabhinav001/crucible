@@ -5,6 +5,9 @@
  * <html>, which the token stylesheet honours over the OS `prefers-color-scheme`
  * in both directions. React-only — no Next dependency — so it lives in the
  * design system and works anywhere.
+ *
+ * The app's root layout runs a tiny inline script before first paint that
+ * re-applies the stored theme, so toggling never flashes on navigation.
  */
 import { useEffect, useState } from "react";
 
@@ -33,12 +36,14 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="cru-btn"
+      className="cru-btn cru-btn-ghost cru-btn-icon"
       aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
       onClick={() => setTheme(next)}
     >
-      {theme === "light" ? "☾" : "☀"}
-      <span style={{ fontSize: "0.85rem" }}>{theme === "light" ? "Dark" : "Light"}</span>
+      <span aria-hidden style={{ fontSize: "0.95rem", lineHeight: 1 }}>
+        {theme === "light" ? "☾" : "☀"}
+      </span>
     </button>
   );
 }

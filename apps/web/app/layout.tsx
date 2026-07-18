@@ -10,10 +10,15 @@ export const metadata: Metadata = {
   description: "Evaluation and reliability platform for LLM agents",
 };
 
+// Re-applies the persisted theme before first paint so a stored choice never
+// flashes the opposite theme on load. Must stay tiny and synchronous.
+const THEME_BOOT = `try{var t=localStorage.getItem("cru-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <AppShell>{children}</AppShell>
       </body>
     </html>
