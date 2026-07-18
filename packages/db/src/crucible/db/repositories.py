@@ -9,7 +9,7 @@ reachable from a request path.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
@@ -22,12 +22,18 @@ from crucible.application.ports import (
     DatasetRecord,
     DatasetVersionRecord,
     MembershipRecord,
+    ReviewQueueItem,
+    ReviewRecord,
     RunEventRecord,
     RunRecord,
+    RunTelemetryRow,
+    ScoreInput,
+    ScoreRecord,
     UserRecord,
 )
 from crucible.db import models as m
 from crucible.domain import (
+    TERMINAL_RUN_STATES,
     DatasetProfile,
     DatasetStatus,
     DatasetVersionStatus,
@@ -686,6 +692,269 @@ class SqlAgentStore:
             )
         ).scalar_one_or_none()
         return None if row is None else (row.node, row.state)
+
+
+class SqlScoreStore:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add_score(self, *, organization_id: uuid.UUID, score: ScoreInput) -> None:
+        self._s.add(
+            m.Score(
+                id=new_id(),
+                organization_id=organization_id,
+                definition_key=score.definition_key,
+                score_type=score.score_type,
+                source=score.source,
+                target_type=score.target_type,
+                target_id=score.target_id,
+                value_num=score.value_num,
+                value_bool=score.value_bool,
+                value_categorical=score.value_categorical,
+                value_text=score.value_text,
+                evaluator_version=score.evaluator_version,
+                created_by_user_id=score.created_by,
+            )
+        )
+        await self._s.flush()
+
+    async def list_scores(
+        self, *, organization_id: uuid.UUID, target_type: str, target_id: str
+    ) -> list[ScoreRecord]:
+        rows = (
+            await self._s.execute(
+                select(m.Score)
+                .where(
+                    m.Score.organization_id == organization_id,
+                    m.Score.target_type == target_type,
+                    m.Score.target_id == target_id,
+                )
+                .order_by(m.Score.created_at)
+            )
+        ).scalars()
+        return [
+            ScoreRecord(
+                definition_key=r.definition_key,
+                score_type=r.score_type,
+                source=r.source,
+                target_type=r.target_type,
+                target_id=r.target_id,
+                evaluator_version=r.evaluator_version,
+                value_num=r.value_num,
+                value_bool=r.value_bool,
+                value_categorical=r.value_categorical,
+                value_text=r.value_text,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]
+
+
+class SqlReviewRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def list_queue(
+        self, *, organization_id: uuid.UUID, limit: int = 50
+    ) -> list[ReviewQueueItem]:
+        stmt = (
+            select(m.AgentRun, m.HumanReview.status)
+            .select_from(m.AgentRun)
+            .outerjoin(m.HumanReview, m.HumanReview.run_id == m.AgentRun.id)
+            .where(
+                m.AgentRun.organization_id == organization_id,
+                m.AgentRun.status == RunStatus.WAITING_REVIEW.value,
+            )
+            .order_by(m.AgentRun.created_at)
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return [
+            ReviewQueueItem(
+                run_id=run.id,
+                question=run.question,
+                created_at=run.created_at,
+                review_status=status,
+                verification=run.verification,
+            )
+            for run, status in rows
+        ]
+
+    async def get_review(
+        self, *, organization_id: uuid.UUID, run_id: uuid.UUID
+    ) -> ReviewRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.HumanReview).where(
+                    m.HumanReview.run_id == run_id,
+                    m.HumanReview.organization_id == organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return None if row is None else self._review(row)
+
+    async def claim(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        run_id: uuid.UUID,
+        reviewer: uuid.UUID,
+        rubric_version: str,
+        ttl_seconds: int,
+    ) -> ReviewRecord | None:
+        """Claim a run for review. Returns the claimed review, or None if another
+        reviewer holds an unexpired claim. One row per run (unique run_id)."""
+        now = _now()
+        expires = now + timedelta(seconds=ttl_seconds)
+        existing = (
+            await self._s.execute(
+                select(m.HumanReview).where(m.HumanReview.run_id == run_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+
+        if existing is None:
+            row = m.HumanReview(
+                id=new_id(),
+                organization_id=organization_id,
+                run_id=run_id,
+                status="claimed",
+                rubric_version=rubric_version,
+                claimed_by=reviewer,
+                claimed_at=now,
+                claim_expires_at=expires,
+                lock_version=0,
+            )
+            self._s.add(row)
+            await self._s.flush()
+            return self._review(row)
+
+        if existing.status == "submitted":
+            return None
+        held = (
+            existing.status == "claimed"
+            and existing.claim_expires_at is not None
+            and existing.claim_expires_at > now
+            and existing.claimed_by != reviewer
+        )
+        if held:
+            return None
+        existing.status = "claimed"
+        existing.claimed_by = reviewer
+        existing.claimed_at = now
+        existing.claim_expires_at = expires
+        existing.lock_version += 1
+        await self._s.flush()
+        return self._review(existing)
+
+    async def submit(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        run_id: uuid.UUID,
+        reviewer: uuid.UUID,
+        decision: str,
+    ) -> ReviewRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.HumanReview)
+                .where(
+                    m.HumanReview.run_id == run_id,
+                    m.HumanReview.organization_id == organization_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None or row.status != "claimed" or row.claimed_by != reviewer:
+            return None
+        row.status = "submitted"
+        row.decision = decision
+        row.submitted_by = reviewer
+        row.submitted_at = _now()
+        row.lock_version += 1
+        await self._s.flush()
+        return self._review(row)
+
+    @staticmethod
+    def _review(row: m.HumanReview) -> ReviewRecord:
+        return ReviewRecord(
+            id=row.id,
+            organization_id=row.organization_id,
+            run_id=row.run_id,
+            status=row.status,
+            rubric_version=row.rubric_version,
+            claimed_by=row.claimed_by,
+            claim_expires_at=row.claim_expires_at,
+            decision=row.decision,
+            lock_version=row.lock_version,
+        )
+
+
+class SqlMetricsRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def run_telemetry(
+        self, *, organization_id: uuid.UUID, limit: int = 200
+    ) -> list[RunTelemetryRow]:
+        runs = list(
+            (
+                await self._s.execute(
+                    select(m.AgentRun)
+                    .where(m.AgentRun.organization_id == organization_id)
+                    .order_by(m.AgentRun.created_at.desc())
+                    .limit(limit)
+                )
+            ).scalars()
+        )
+        if not runs:
+            return []
+        run_ids = [r.id for r in runs]
+        attempts = (
+            await self._s.execute(select(m.AgentAttempt).where(m.AgentAttempt.run_id.in_(run_ids)))
+        ).scalars()
+        terminal_events = (
+            await self._s.execute(
+                select(m.RunEvent.run_id)
+                .where(m.RunEvent.run_id.in_(run_ids), m.RunEvent.event_type == "terminal")
+                .distinct()
+            )
+        ).scalars()
+
+        has_terminal = set(terminal_events)
+        by_run: dict[uuid.UUID, dict[str, Any]] = {
+            rid: {"cost": 0.0, "latency": 0, "executes": 0, "model": False} for rid in run_ids
+        }
+        for a in attempts:
+            agg = by_run[a.run_id]
+            agg["cost"] += a.cost_usd or 0.0
+            if a.kind == "execute":
+                agg["executes"] += 1
+                agg["latency"] += a.duration_ms or 0
+            if a.kind in ("plan", "code"):
+                agg["model"] = True
+
+        rows: list[RunTelemetryRow] = []
+        for run in runs:
+            agg = by_run[run.id]
+            terminal = RunStatus(run.status) in TERMINAL_RUN_STATES
+            reached_model = bool(agg["model"])
+            trace_complete = (
+                bool(run.config_manifest)
+                and (run.id in has_terminal if terminal else True)
+                and (agg["model"] if reached_model else True)
+            )
+            rows.append(
+                RunTelemetryRow(
+                    run_id=run.id,
+                    status=run.status,
+                    failure_category=run.failure_category,
+                    cost_usd=round(float(agg["cost"]), 6),
+                    latency_ms=int(agg["latency"]),
+                    attempt_count=int(agg["executes"]),
+                    trace_complete=trace_complete,
+                )
+            )
+        return rows
 
 
 class SqlAuditSink:

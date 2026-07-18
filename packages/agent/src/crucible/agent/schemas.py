@@ -109,3 +109,26 @@ class Answer(BaseModel):
     text: str = ""
     provenance: Provenance
     limitations: str = ""
+
+
+class JudgeRubricScore(BaseModel):
+    """The LLM judge's narrow, ordinal assessment of *explanation quality* only
+    (master plan §10.5). Each dimension is 0/1/2. The judge never scores the
+    numeric answer — that has a deterministic oracle — and can never override it.
+    """
+
+    groundedness: int = Field(ge=0, le=2)
+    provenance: int = Field(ge=0, le=2)
+    usefulness: int = Field(ge=0, le=2)
+    uncertainty: int = Field(ge=0, le=2)
+    rationale: str = ""
+
+    @property
+    def total(self) -> int:
+        return self.groundedness + self.provenance + self.usefulness + self.uncertainty
+
+    def dimension(self, name: str) -> int:
+        return int(getattr(self, name))
+
+
+JUDGE_DIMENSIONS = ("groundedness", "provenance", "usefulness", "uncertainty")

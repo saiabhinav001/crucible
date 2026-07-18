@@ -8,7 +8,14 @@ adapters.
 from crucible.agent.errors import AgentError, ModelNotConfigured, ModelUnavailable
 from crucible.agent.evaluate import EphemeralPersistence, EvalTrace, run_to_completion
 from crucible.agent.graph import GraphRunner
-from crucible.agent.models import FakeModel, OpenAICompatModel
+from crucible.agent.models import (
+    JUDGE_RUBRIC_VERSION,
+    FakeJudge,
+    FakeModel,
+    Judge,
+    OpenAICompatJudge,
+    OpenAICompatModel,
+)
 from crucible.agent.nodes import AgentContext, AgentNodes
 from crucible.agent.orchestrator import resolve_review, run_agent
 from crucible.agent.ports import (
@@ -22,10 +29,12 @@ from crucible.agent.ports import (
     RunView,
 )
 from crucible.agent.schemas import (
+    JUDGE_DIMENSIONS,
     AnalysisPlan,
     Answer,
     AnswerKind,
     GeneratedCode,
+    JudgeRubricScore,
     Operation,
     Provenance,
     VerificationDecision,
@@ -40,6 +49,8 @@ from crucible.agent.state import (
 )
 
 __all__ = [
+    "JUDGE_DIMENSIONS",
+    "JUDGE_RUBRIC_VERSION",
     "AgentContext",
     "AgentError",
     "AgentNodes",
@@ -54,9 +65,12 @@ __all__ = [
     "EphemeralPersistence",
     "EvalTrace",
     "ExecutionEvidence",
+    "FakeJudge",
     "FakeModel",
     "GeneratedCode",
     "GraphRunner",
+    "Judge",
+    "JudgeRubricScore",
     "ModelConfig",
     "ModelGateway",
     "ModelNotConfigured",
@@ -64,6 +78,7 @@ __all__ = [
     "ModelUnavailable",
     "ModelUsage",
     "Node",
+    "OpenAICompatJudge",
     "OpenAICompatModel",
     "Operation",
     "Provenance",

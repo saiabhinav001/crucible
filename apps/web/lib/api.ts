@@ -95,6 +95,47 @@ async function get<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+export type Reliability = {
+  total: number;
+  terminal: number;
+  terminal_states: Record<string, number>;
+  answered: number;
+  abstained: number;
+  technical_completion_rate: number;
+  trace_completeness: number;
+  failure_taxonomy: Record<string, number>;
+};
+
+export type CostLatency = {
+  runs_with_cost: number;
+  total_cost_usd: number;
+  cost_attribution_completeness: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
+};
+
+export type AlertRow = {
+  rule_id: string;
+  severity: string;
+  firing: boolean;
+  detail: string;
+  runbook: string;
+};
+
+export type ReviewQueueItem = {
+  run_id: string;
+  question: string;
+  created_at: string;
+  review_status: string | null;
+  verification: Record<string, unknown> | null;
+};
+
+export const getReliability = () => get<Reliability>("/v1/metrics/reliability");
+export const getCostLatency = () => get<CostLatency>("/v1/metrics/cost");
+export const getAlerts = () => get<AlertRow[]>("/v1/metrics/alerts");
+export const getReviewQueue = () => get<ReviewQueueItem[]>("/v1/reviews");
+
 export const listDatasets = () => get<Dataset[]>("/v1/datasets");
 export const listVersions = (datasetId: string) =>
   get<DatasetVersion[]>(`/v1/datasets/${datasetId}/versions`);

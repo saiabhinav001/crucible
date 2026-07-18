@@ -50,6 +50,14 @@ from crucible.domain.runs import (
     RunStatus,
     can_transition,
 )
+from crucible.domain.scores import (
+    RedactionState,
+    ReviewDecision,
+    ReviewStatus,
+    ScoreSource,
+    ScoreTargetType,
+    ScoreType,
+)
 
 __all__ = [
     "ACTIVE_RUN_STATES",
@@ -83,9 +91,15 @@ __all__ = [
     "Principal",
     "ProblemDetail",
     "RateLimited",
+    "RedactionState",
+    "ReviewDecision",
+    "ReviewStatus",
     "Role",
     "RunEventType",
     "RunStatus",
+    "ScoreSource",
+    "ScoreTargetType",
+    "ScoreType",
     "SystemStatus",
     "UnsupportedMedia",
     "UploadPolicyError",

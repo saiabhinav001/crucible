@@ -84,12 +84,18 @@ export default function Home() {
         )}
       </section>
 
-      <nav style={{ marginTop: "2rem", display: "flex", gap: "1.25rem" }}>
+      <nav style={{ marginTop: "2rem", display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
+        <a style={{ color: "#58a6ff" }} href="/dashboard">
+          Reliability
+        </a>
         <a style={{ color: "#58a6ff" }} href="/datasets">
           Datasets
         </a>
         <a style={{ color: "#58a6ff" }} href="/runs">
           Runs
+        </a>
+        <a style={{ color: "#58a6ff" }} href="/reviews">
+          Reviews
         </a>
         <a style={{ color: "#58a6ff" }} href="/evaluations">
           Evaluations

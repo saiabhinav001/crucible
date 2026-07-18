@@ -12,6 +12,7 @@ dependencies = [
     "crucible-execution",
     "crucible-agent",
     "crucible-evaluation",
+    "crucible-observability",
     "crucible-api",
     "crucible-worker",
 ]
@@ -40,6 +41,7 @@ members = [
     "packages/execution",
     "packages/agent",
     "packages/evaluation",
+    "packages/observability",
     "apps/api",
     "apps/worker",
 ]
@@ -53,6 +55,7 @@ crucible-storage = { workspace = true }
 crucible-execution = { workspace = true }
 crucible-agent = { workspace = true }
 crucible-evaluation = { workspace = true }
+crucible-observability = { workspace = true }
 crucible-api = { workspace = true }
 crucible-worker = { workspace = true }
 
@@ -86,6 +89,7 @@ mypy_path = [
     "packages/execution/src",
     "packages/agent/src",
     "packages/evaluation/src",
+    "packages/observability/src",
     "apps/api/src",
     "apps/worker/src",
 ]
@@ -122,7 +126,7 @@ forbidden_modules = [
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy",
     "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
     "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
-    "crucible.execution", "crucible.agent", "crucible.evaluation",
+    "crucible.execution", "crucible.agent", "crucible.evaluation", "crucible.observability",
     "crucible_api", "crucible_worker",
 ]
 
@@ -135,6 +139,16 @@ forbidden_modules = [
     "alembic", "redis", "arq", "httpx", "boto3", "botocore", "polars", "jwt", "argon2", "docker",
     "crucible.db", "crucible.security", "crucible.storage", "crucible.execution",
     "crucible.agent", "crucible.evaluation", "crucible_api", "crucible_worker",
+]
+
+[[tool.importlinter.contracts]]
+name = "observability imports only the domain"
+type = "forbidden"
+source_modules = ["crucible.observability"]
+forbidden_modules = [
+    "crucible.application", "crucible.db", "crucible.security", "crucible.storage",
+    "crucible.execution", "crucible.agent", "crucible.evaluation",
+    "crucible_api", "crucible_worker", "fastapi", "sqlalchemy", "boto3",
 ]
 
 [[tool.importlinter.contracts]]

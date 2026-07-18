@@ -18,6 +18,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -320,3 +321,59 @@ class AuditEvent(Base):
 
     # Append-only: no repository method updates or deletes this table, and
     # Phase 9 IaC withholds UPDATE/DELETE grants from the application role.
+
+
+class Score(Base):
+    __tablename__ = "scores"
+    __table_args__ = (
+        Index("ix_scores_organization_id_target", "organization_id", "target_type", "target_id"),
+        Index("ix_scores_definition_key_created_at", "definition_key", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+    )
+    definition_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    score_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    value_num: Mapped[float | None] = mapped_column(Float)
+    value_bool: Mapped[bool | None] = mapped_column(Boolean)
+    value_categorical: Mapped[str | None] = mapped_column(String(64))
+    value_text: Mapped[str | None] = mapped_column(Text)
+    evaluator_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+
+class HumanReview(Base):
+    __tablename__ = "human_reviews"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_human_reviews_run_id"),
+        Index("ix_human_reviews_organization_id_status", "organization_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    rubric_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    claimed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision: Mapped[str | None] = mapped_column(String(16))
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lock_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

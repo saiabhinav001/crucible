@@ -126,6 +126,69 @@ class RunRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoreInput:
+    definition_key: str
+    score_type: str
+    source: str
+    target_type: str
+    target_id: str
+    evaluator_version: str
+    value_num: float | None = None
+    value_bool: bool | None = None
+    value_categorical: str | None = None
+    value_text: str | None = None
+    created_by: uuid.UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScoreRecord:
+    definition_key: str
+    score_type: str
+    source: str
+    target_type: str
+    target_id: str
+    evaluator_version: str
+    value_num: float | None
+    value_bool: bool | None
+    value_categorical: str | None
+    value_text: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewRecord:
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    run_id: uuid.UUID
+    status: str
+    rubric_version: str
+    claimed_by: uuid.UUID | None
+    claim_expires_at: datetime | None
+    decision: str | None
+    lock_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewQueueItem:
+    run_id: uuid.UUID
+    question: str
+    created_at: datetime
+    review_status: str | None
+    verification: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunTelemetryRow:
+    run_id: uuid.UUID
+    status: str
+    failure_category: str | None
+    cost_usd: float
+    latency_ms: int
+    attempt_count: int
+    trace_complete: bool
+
+
+@dataclass(frozen=True, slots=True)
 class AgentAttemptRecord:
     run_id: uuid.UUID
     attempt_no: int
@@ -316,6 +379,44 @@ class RunRepository(Protocol):
 
 class AuditSink(Protocol):
     async def record(self, entry: AuditEntry) -> None: ...
+
+
+class ScoreStore(Protocol):
+    async def add_score(self, *, organization_id: uuid.UUID, score: ScoreInput) -> None: ...
+
+    async def list_scores(
+        self, *, organization_id: uuid.UUID, target_type: str, target_id: str
+    ) -> list[ScoreRecord]: ...
+
+
+class ReviewRepository(Protocol):
+    async def list_queue(
+        self, *, organization_id: uuid.UUID, limit: int = 50
+    ) -> list[ReviewQueueItem]: ...
+
+    async def get_review(
+        self, *, organization_id: uuid.UUID, run_id: uuid.UUID
+    ) -> ReviewRecord | None: ...
+
+    async def claim(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        run_id: uuid.UUID,
+        reviewer: uuid.UUID,
+        rubric_version: str,
+        ttl_seconds: int,
+    ) -> ReviewRecord | None: ...
+
+    async def submit(
+        self, *, organization_id: uuid.UUID, run_id: uuid.UUID, reviewer: uuid.UUID, decision: str
+    ) -> ReviewRecord | None: ...
+
+
+class MetricsRepository(Protocol):
+    async def run_telemetry(
+        self, *, organization_id: uuid.UUID, limit: int = 200
+    ) -> list[RunTelemetryRow]: ...
 
 
 # --------------------------------------------------------------- infrastructure

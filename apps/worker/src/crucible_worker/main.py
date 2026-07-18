@@ -15,6 +15,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
+from arq import cron
 from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -23,6 +24,7 @@ from crucible.storage import S3ObjectStorage
 from crucible_worker.agent_runtime import build_limits, build_model
 from crucible_worker.executor import build_executor
 from crucible_worker.jobs.datasets import profile_dataset_version
+from crucible_worker.jobs.online import run_online_checks
 from crucible_worker.jobs.runs import execute_run, resolve_run_review
 from crucible_worker.jobs.sandbox import sandbox_selfcheck
 from crucible_worker.settings import WorkerAppSettings
@@ -80,6 +82,13 @@ class WorkerSettings:
         execute_run,
         resolve_run_review,
         sandbox_selfcheck,
+        run_online_checks,
+    ]
+    # Online deterministic evaluation runs on a fixed cadence (hourly), sampling
+    # terminal runs per tenant. `run_once` guards against multiple workers firing
+    # the same tick.
+    cron_jobs: ClassVar[list[Any]] = [
+        cron(run_online_checks, minute=0, run_at_startup=False),
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown

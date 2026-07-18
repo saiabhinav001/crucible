@@ -10,12 +10,38 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 5 complete (offline evaluation harness + regression gate)
+## Status: Phase 6 complete (observability, online eval, and human review)
 
-Phases 0–4 built the platform, data plane, sandbox, and the durable agent.
-**Phase 5 is the crown jewel**: an executable regression gate. It runs the real
-agent over versioned cases, scores against trusted oracles, and compares a
-candidate to a frozen baseline with a paired bootstrap confidence interval.
+Phases 0–5 built the platform, data plane, sandbox, the durable agent, and the
+offline regression gate. **Phase 6 makes runs accountable**: every terminal run
+shows a redacted trace, cost, latency, versions, and a failure taxonomy; a
+reviewer can safely score a run; the judge is calibrated against held-out human
+labels and confined to secondary criteria; and reliability alerts are exercised.
+
+- **One redaction boundary.** Nothing leaves the trust boundary — an exported
+  trace, a judge call — without passing through `crucible.observability.redaction`:
+  secrets and PII become typed markers, prompts become bounded excerpts + hashes,
+  and traces carry a salted tenant *pseudonym*, never the raw org id (threat T8).
+- **Trace completeness as the DoD metric.** A run you cannot fully explain is a
+  reliability defect; completeness, reliability, cost/latency, and the failure
+  taxonomy are pure functions over telemetry, unit-tested without a stack.
+- **Safe human review.** Claim→submit with an exclusive optimistic lock (one
+  reviewer per run), a versioned rubric, and grades recorded as typed `human`
+  scores that never gate correctness.
+- **Calibrated, secondary judge.** The LLM-as-judge scores explanation quality
+  only, calibrated with quadratic-weighted Cohen's kappa against a held-out set;
+  the [agreement report](docs/evaluation/judge-calibration-report.md) is published.
+- **Online eval + alerts.** An hourly per-tenant sampler records deterministic
+  drift checks; SLO alerts fire on trace-completeness, completion, and abstention
+  with linked [runbooks](docs/operations/alert-runbook.md).
+
+See [docs/operations/observability.md](docs/operations/observability.md).
+
+<details><summary>Earlier: Phase 5 — offline evaluation harness + regression gate</summary>
+
+Phase 5 is an executable regression gate. It runs the real agent over versioned
+cases, scores against trusted oracles, and compares a candidate to a frozen
+baseline with a paired bootstrap confidence interval.
 
 - **Versioned suites, verified gold.** Every gold answer in the core suite is
   cross-checked against an independent, executable reference calculator; fixtures
@@ -37,6 +63,8 @@ candidate to a frozen baseline with a paired bootstrap confidence interval.
 make sandbox-image                          # build the runner
 make eval-run                               # score the core suite vs the frozen baseline, gate
 ```
+
+</details>
 
 <details><summary>Earlier: Phase 4 — durable data-agent MVP</summary>
 

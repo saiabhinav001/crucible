@@ -15,6 +15,7 @@ dependencies = [
     "crucible-db",
     "crucible-security",
     "crucible-storage",
+    "crucible-observability",
 ]
 
 [tool.uv.sources]
@@ -23,6 +24,7 @@ crucible-application = { workspace = true }
 crucible-db = { workspace = true }
 crucible-security = { workspace = true }
 crucible-storage = { workspace = true }
+crucible-observability = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

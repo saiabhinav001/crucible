@@ -16,6 +16,7 @@ members = [
     "crucible-domain",
     "crucible-evaluation",
     "crucible-execution",
+    "crucible-observability",
     "crucible-security",
     "crucible-storage",
     "crucible-worker",
@@ -403,6 +404,7 @@ dependencies = [
     { name = "crucible-application" },
     { name = "crucible-db" },
     { name = "crucible-domain" },
+    { name = "crucible-observability" },
     { name = "crucible-security" },
     { name = "crucible-storage" },
     { name = "fastapi" },
@@ -418,6 +420,7 @@ requires-dist = [
     { name = "crucible-application", editable = "packages/application" },
     { name = "crucible-db", editable = "packages/db" },
     { name = "crucible-domain", editable = "packages/domain" },
+    { name = "crucible-observability", editable = "packages/observability" },
     { name = "crucible-security", editable = "packages/security" },
     { name = "crucible-storage", editable = "packages/storage" },
     { name = "fastapi", specifier = ">=0.115,<1" },
@@ -506,6 +509,17 @@ requires-dist = [
 provides-extras = ["docker"]
 
 [[package]]
+name = "crucible-observability"
+version = "0.1.0"
+source = { editable = "packages/observability" }
+dependencies = [
+    { name = "crucible-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "crucible-domain", editable = "packages/domain" }]
+
+[[package]]
 name = "crucible-security"
 version = "0.1.0"
 source = { editable = "packages/security" }
@@ -580,6 +594,7 @@ dependencies = [
     { name = "crucible-domain" },
     { name = "crucible-evaluation" },
     { name = "crucible-execution" },
+    { name = "crucible-observability" },
     { name = "crucible-security" },
     { name = "crucible-storage" },
     { name = "crucible-worker" },
@@ -605,6 +620,7 @@ requires-dist = [
     { name = "crucible-domain", editable = "packages/domain" },
     { name = "crucible-evaluation", editable = "packages/evaluation" },
     { name = "crucible-execution", editable = "packages/execution" },
+    { name = "crucible-observability", editable = "packages/observability" },
     { name = "crucible-security", editable = "packages/security" },
     { name = "crucible-storage", editable = "packages/storage" },
     { name = "crucible-worker", editable = "apps/worker" },

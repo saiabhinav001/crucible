@@ -45,6 +45,8 @@ from crucible_api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 from crucible_api.probes import DatabaseProbe, RedisProbe
 from crucible_api.routers import datasets as datasets_router
 from crucible_api.routers import identity as identity_router
+from crucible_api.routers import metrics as metrics_router
+from crucible_api.routers import reviews as reviews_router
 from crucible_api.routers import runs as runs_router
 from crucible_api.settings import ApiSettings, resolve_build_info
 
@@ -152,6 +154,9 @@ def create_app(
     app.include_router(identity_router.router)
     app.include_router(datasets_router.router)
     app.include_router(runs_router.router)
+    app.include_router(reviews_router.router)
+    app.include_router(metrics_router.router)
+    app.include_router(metrics_router.trace_router)
 
     @app.exception_handler(NotAuthenticated)
     @app.exception_handler(PermissionDenied)

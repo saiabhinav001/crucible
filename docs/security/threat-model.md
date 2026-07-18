@@ -91,6 +91,25 @@ proven. Full detail and the control-to-canary matrix live in
 (carried forward): the Docker backend is local-dev only; production microVM
 provider integration and base-image digest pinning land in Phases 9–10.
 
+### Phase 6 — observability, online eval, and human review (2026-07-18)
+
+The trace/eval boundary (B5, threat T8) — everything that leaves the trust
+boundary as telemetry — is built and enforced by a single redaction layer.
+Detail in [docs/operations/observability.md](../operations/observability.md).
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| T8 sensitive prompt/data leakage on export | Nothing crosses B5 without `crucible.observability.redaction`: `redact_text` strips Crucible/provider secrets, credentialed URLs, and PII to typed markers; `export_safe_excerpt` redacts→bounds→hashes; `redact_payload` drops sensitive keys and redacts nested strings. Exported traces carry a salted one-way **tenant pseudonym**, never the raw org id, and never dataset contents. | `tests/unit/test_observability_redaction.py`; `test_metrics_and_trace_surface_a_terminal_run` asserts the raw org id never appears in an exported trace |
+| T8 forged feedback | Human review is a claim→submit flow with an **exclusive** optimistic lock (`SELECT … FOR UPDATE` + unique `run_id`); only the claimant may submit; grades are typed `human` scores, never a correctness gate; every submission is audited (actor_type + actor_id). | `test_only_one_reviewer_can_claim_a_run`, `test_non_claimant_cannot_submit`, `test_claim_submit_records_scores_and_resolves_run` |
+| T5 at the eval plane | The online sampler holds no user; it synthesizes a per-org system principal scoped to one organization, and the command enforces `EVAL_WRITE` and reads only that tenant's runs. Metrics/trace endpoints are org-scoped; a cross-tenant trace read returns 404. | `test_trace_is_tenant_isolated`, `test_online_sampler_records_deterministic_scores` |
+| T7 secret/data reaching the judge | The judge is deny-by-default (`FakeJudge` in tests/dev; the OpenAI-compatible judge refuses without explicit config), scores **explanation quality only** (never correctness), and is used only when its held-out agreement is published and current. | [judge-calibration-report.md](../evaluation/judge-calibration-report.md); `tests/unit/test_eval_calibration.py` |
+
+**Alert drill:** the SLO rules are pure functions over the metrics and are
+exercised in `tests/unit/test_observability_metrics_trace.py`
+(`test_alerts_fire_on_low_completeness_and_containment`,
+`test_alerts_clear_when_healthy`), satisfying the DoD "an alert/runbook is
+exercised." Runbooks: [alert-runbook.md](../operations/alert-runbook.md).
+
 ## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3

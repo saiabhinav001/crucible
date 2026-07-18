@@ -16,9 +16,13 @@ from crucible.application.ports import (
     DatasetRepository,
     DatasetVersionRecord,
     IdentityRepository,
+    MetricsRepository,
     RunEventRecord,
     RunRecord,
     RunRepository,
+    RunTelemetryRow,
+    ScoreRecord,
+    ScoreStore,
 )
 from crucible.domain import NotFound, Permission, PermissionDenied, Principal
 
@@ -136,3 +140,27 @@ class ListApiKeys:
     async def __call__(self, principal: Principal) -> list[ApiKeyRecord]:
         _require(principal, Permission.APIKEY_MANAGE)
         return await self._identity.list_api_keys(principal.organization_id)
+
+
+class GetRunTelemetry:
+    def __init__(self, *, metrics: MetricsRepository) -> None:
+        self._metrics = metrics
+
+    async def __call__(self, principal: Principal, *, limit: int = 200) -> list[RunTelemetryRow]:
+        _require(principal, Permission.RUN_READ)
+        return await self._metrics.run_telemetry(
+            organization_id=principal.organization_id, limit=max(1, min(limit, 1000))
+        )
+
+
+class ListScores:
+    def __init__(self, *, scores: ScoreStore) -> None:
+        self._scores = scores
+
+    async def __call__(
+        self, principal: Principal, *, target_type: str, target_id: str
+    ) -> list[ScoreRecord]:
+        _require(principal, Permission.RUN_READ)
+        return await self._scores.list_scores(
+            organization_id=principal.organization_id, target_type=target_type, target_id=target_id
+        )

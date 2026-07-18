@@ -8,7 +8,10 @@ from crucible.db.repositories import (
     SqlAuditSink,
     SqlDatasetRepository,
     SqlIdentityRepository,
+    SqlMetricsRepository,
+    SqlReviewRepository,
     SqlRunRepository,
+    SqlScoreStore,
 )
 
 __all__ = [
@@ -17,7 +20,10 @@ __all__ = [
     "SqlAuditSink",
     "SqlDatasetRepository",
     "SqlIdentityRepository",
+    "SqlMetricsRepository",
+    "SqlReviewRepository",
     "SqlRunRepository",
+    "SqlScoreStore",
     "create_async_engine_from_url",
     "install_selector_event_loop_policy",
     "ping",

@@ -188,6 +188,67 @@ class ReviewIn(BaseModel):
     approve: bool
 
 
+# --------------------------------------------------------------- review queue
+
+
+class ReviewQueueItemOut(BaseModel):
+    run_id: uuid.UUID
+    question: str
+    created_at: datetime
+    review_status: str | None
+    verification: dict[str, Any] | None
+
+
+class ReviewOut(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    rubric_version: str
+    decision: str | None
+
+
+class RubricGradesIn(BaseModel):
+    groundedness: int = Field(ge=0, le=2)
+    provenance: int = Field(ge=0, le=2)
+    usefulness: int = Field(ge=0, le=2)
+    uncertainty: int = Field(ge=0, le=2)
+
+
+class SubmitReviewIn(BaseModel):
+    decision: Literal["approve", "reject"]
+    grades: RubricGradesIn
+
+
+# --------------------------------------------------------------------- metrics
+
+
+class ReliabilityOut(BaseModel):
+    total: int
+    terminal: int
+    terminal_states: dict[str, int]
+    answered: int
+    abstained: int
+    technical_completion_rate: float
+    trace_completeness: float
+    failure_taxonomy: dict[str, int]
+
+
+class CostLatencyOut(BaseModel):
+    runs_with_cost: int
+    total_cost_usd: float
+    cost_attribution_completeness: float
+    latency_p50_ms: int
+    latency_p95_ms: int
+    latency_p99_ms: int
+
+
+class AlertOut(BaseModel):
+    rule_id: str
+    severity: str
+    firing: bool
+    detail: str
+    runbook: str
+
+
 class RunEventOut(BaseModel):
     sequence_no: int
     event_type: str

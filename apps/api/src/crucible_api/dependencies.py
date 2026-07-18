@@ -29,7 +29,10 @@ from crucible.db import (
     SqlAuditSink,
     SqlDatasetRepository,
     SqlIdentityRepository,
+    SqlMetricsRepository,
+    SqlReviewRepository,
     SqlRunRepository,
+    SqlScoreStore,
 )
 from crucible.domain import (
     DependencyUnavailable,
@@ -95,11 +98,26 @@ def agent_store(session: SessionDep) -> SqlAgentStore:
     return SqlAgentStore(session)
 
 
+def review_repo(session: SessionDep) -> SqlReviewRepository:
+    return SqlReviewRepository(session)
+
+
+def score_store(session: SessionDep) -> SqlScoreStore:
+    return SqlScoreStore(session)
+
+
+def metrics_repo(session: SessionDep) -> SqlMetricsRepository:
+    return SqlMetricsRepository(session)
+
+
 IdentityRepoDep = Annotated[SqlIdentityRepository, Depends(identity_repo)]
 DatasetRepoDep = Annotated[SqlDatasetRepository, Depends(dataset_repo)]
 RunRepoDep = Annotated[SqlRunRepository, Depends(run_repo)]
 AuditDep = Annotated[SqlAuditSink, Depends(audit_sink)]
 AgentStoreDep = Annotated[SqlAgentStore, Depends(agent_store)]
+ReviewRepoDep = Annotated[SqlReviewRepository, Depends(review_repo)]
+ScoreStoreDep = Annotated[SqlScoreStore, Depends(score_store)]
+MetricsRepoDep = Annotated[SqlMetricsRepository, Depends(metrics_repo)]
 
 
 async def get_principal(
