@@ -9,7 +9,7 @@ import "server-only";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import yaml from "js-yaml";
+import { load as yamlLoad } from "js-yaml";
 
 function repoRoot(): string {
   // `pnpm --filter web dev` runs from apps/web; the repo root is two levels up.
@@ -68,13 +68,49 @@ export function loadExampleReport(): EvalReport | null {
   }
 }
 
+/** Renders a committed comparison report as a self-contained Markdown document
+ * — the shareable, human-readable form of the CI-gated JSON artifact. */
+export function reportToMarkdown(report: EvalReport): string {
+  const g = report.gate;
+  const lines: string[] = [
+    `# Evaluation comparison — gate ${g.status.toUpperCase()}`,
+    "",
+    `- generated: ${report.generated_at}`,
+    `- git: \`${report.git_sha}\` · scorer \`${report.scorer_version}\``,
+    `- suite: \`${report.suite.id}@${report.suite.version}\` (hash \`${report.suite.hash.slice(0, 16)}\`)`,
+    `- candidate \`${report.candidate.config_id}\` (acc ${report.candidate.accuracy}) vs baseline \`${report.baseline.config_id}\` (acc ${report.baseline.accuracy})`,
+    `- paired Δ **${g.delta}**, 95% CI [${g.ci_lo}, ${g.ci_hi}], tolerance ${g.tolerance}`,
+    `- report sha256: \`${report.content_sha256}\``,
+    "",
+    "## Gate reasons",
+    "",
+    ...(g.reasons.length ? g.reasons.map((r) => `- ${r}`) : ["- (none)"]),
+    "",
+    "## Per-case deltas",
+    "",
+    "| case | tags | base | cand | Δ | terminal | value | ms | policy |",
+    "|---|---|---|---|---|---|---|---|---|",
+    ...report.cases.map((c) => {
+      const mark = (v: boolean | null) => (v === null ? "·" : v ? "✓" : "✗");
+      const policy = c.policy_ok ? "ok" : `FAIL:${c.policy_failures.join(",")}`;
+      return `| ${c.id} | ${c.tags.join(" ")} | ${mark(c.baseline_correct)} | ${mark(
+        c.candidate_correct,
+      )} | ${c.delta ?? "·"} | ${c.candidate.terminal} | ${String(c.candidate.value ?? "—")} | ${
+        c.candidate.latency_ms
+      } | ${policy} |`;
+    }),
+    "",
+  ];
+  return lines.join("\n");
+}
+
 export function listSuites(): SuiteSummary[] {
   try {
     const dir = join(repoRoot(), "evals", "suites");
     return readdirSync(dir)
       .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
       .map((f) => {
-        const doc = yaml.load(readFileSync(join(dir, f), "utf-8")) as Record<string, unknown>;
+        const doc = yamlLoad(readFileSync(join(dir, f), "utf-8")) as Record<string, unknown>;
         const cases = (doc.cases as unknown[]) ?? [];
         const smoke = (doc.smoke as unknown[]) ?? [];
         return {

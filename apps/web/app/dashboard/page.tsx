@@ -2,18 +2,25 @@
 // completeness, cost/latency, and firing alerts — the operating view for the
 // agent's health (master plan §11.2).
 import {
-  getAlerts,
-  getCostLatency,
-  getReliability,
-  NotConfigured,
-  type AlertRow,
-} from "@/lib/api";
-import { MetricCard } from "../ui-metrics";
-import { Mono, Panel, StatusBadge, Table } from "../ui";
+  Callout,
+  DataTable,
+  MetricCard,
+  MetricGrid,
+  Mono,
+  Panel,
+  SeverityTag,
+  StatusBadge,
+} from "@crucible/ui";
+
+import { getAlerts, getCostLatency, getReliability, NotConfigured } from "@/lib/api";
+
+import { SetupRequired } from "../_setup";
 
 export const dynamic = "force-dynamic";
 
-const SEV_COLOR: Record<string, string> = { sev1: "#f85149", sev2: "#d29922", sev3: "#8b949e" };
+function pct(v: number): string {
+  return `${(v * 100).toFixed(1)}%`;
+}
 
 export default async function DashboardPage() {
   let reliability, cost, alerts;
@@ -24,63 +31,66 @@ export default async function DashboardPage() {
       getAlerts(),
     ]);
   } catch (error) {
-    if (error instanceof NotConfigured) {
-      return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "3rem 1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem" }}>Setup required</h1>
-          <p style={{ color: "#8b949e" }}>{error.message}</p>
-        </main>
-      );
-    }
+    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
     throw error;
   }
 
   const firing = alerts.filter((a) => a.firing);
 
   return (
-    <main style={{ maxWidth: 1000, margin: "0 auto", padding: "3rem 1.5rem" }}>
-      <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>Reliability</h1>
-      <p style={{ color: "#8b949e", marginTop: 0 }}>
+    <>
+      <h1 className="cru-page-title">Reliability</h1>
+      <p className="cru-page-lede">
         Every terminal run contributes its trace, cost, latency, versions, and failure category.
+        This is the operating view of the agent&rsquo;s health.
       </p>
 
-      {firing.length > 0 && (
+      {firing.length > 0 ? (
         <Panel title={`Firing alerts (${firing.length})`}>
-          <Table
-            headers={["severity", "rule", "detail", "runbook"]}
+          <DataTable
+            headers={["Severity", "Rule", "Detail", "Runbook"]}
             empty=""
-            rows={firing.map((a: AlertRow) => [
-              <span key="s" style={{ color: SEV_COLOR[a.severity] ?? "#8b949e", fontWeight: 600 }}>
-                {a.severity.toUpperCase()}
-              </span>,
+            rows={firing.map((a) => [
+              <SeverityTag key="s" severity={a.severity} />,
               a.rule_id,
               a.detail,
               <Mono key="r">{a.runbook}</Mono>,
             ])}
           />
         </Panel>
+      ) : (
+        <Callout tone="ok" title="No firing alerts">
+          Sandbox containment, trace completeness, technical completion, and abstention are within
+          SLO.
+        </Callout>
       )}
 
-      <section style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginTop: "2rem" }}>
+      <MetricGrid>
         <MetricCard label="Terminal runs" value={String(reliability.terminal)} />
         <MetricCard
           label="Technical completion"
           value={pct(reliability.technical_completion_rate)}
+          hint="excludes cancelled"
         />
-        <MetricCard label="Trace completeness" value={pct(reliability.trace_completeness)} />
+        <MetricCard
+          label="Trace completeness"
+          value={pct(reliability.trace_completeness)}
+          hint="DoD target ≥ 99%"
+        />
         <MetricCard label="Answered" value={String(reliability.answered)} />
         <MetricCard label="Abstained" value={String(reliability.abstained)} />
         <MetricCard label="p95 latency" value={`${cost.latency_p95_ms} ms`} />
-        <MetricCard label="Total cost" value={`$${cost.total_cost_usd}`} />
+        <MetricCard label="Total cost" value={`$${cost.total_cost_usd.toFixed(4)}`} />
         <MetricCard
           label="Cost attribution"
           value={pct(cost.cost_attribution_completeness)}
+          hint="runs with a cost"
         />
-      </section>
+      </MetricGrid>
 
       <Panel title="Terminal states">
-        <Table
-          headers={["state", "count"]}
+        <DataTable
+          headers={["State", "Count"]}
           empty="No terminal runs yet."
           rows={Object.entries(reliability.terminal_states).map(([s, n]) => [
             <StatusBadge key="s" status={s} />,
@@ -90,19 +100,15 @@ export default async function DashboardPage() {
       </Panel>
 
       <Panel title="Failure taxonomy">
-        <Table
-          headers={["category", "count"]}
-          empty="No failures recorded."
+        <DataTable
+          headers={["Category", "Count"]}
+          empty="No failures recorded — nothing to categorize."
           rows={Object.entries(reliability.failure_taxonomy).map(([c, n]) => [
             <Mono key="c">{c}</Mono>,
             n,
           ])}
         />
       </Panel>
-    </main>
+    </>
   );
-}
-
-function pct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
 }

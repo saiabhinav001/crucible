@@ -1,53 +1,67 @@
-import { listRuns, NotConfigured } from "@/lib/api";
-import { Mono, Panel, StatusBadge, Table } from "../ui";
+import { DataTable, Mono, Panel, StatusBadge } from "@crucible/ui";
+import Link from "next/link";
+
+import { listDatasets, listRuns, listVersions, NotConfigured } from "@/lib/api";
+
+import { SetupRequired } from "../_setup";
+import { NewRunForm, type ReadyVersion } from "./new-run-form";
 
 export const dynamic = "force-dynamic";
 
+async function readyVersions(): Promise<ReadyVersion[]> {
+  const datasets = await listDatasets();
+  const perDataset = await Promise.all(
+    datasets.map(async (d) => {
+      const versions = await listVersions(d.id);
+      return versions
+        .filter((v) => v.status === "ready")
+        .map((v) => ({ version_id: v.id, label: `${d.name} · v${v.version_no}` }));
+    }),
+  );
+  return perDataset.flat();
+}
+
 export default async function RunsPage() {
-  let runs;
+  let runs, versions;
   try {
-    runs = await listRuns();
+    [runs, versions] = await Promise.all([listRuns(), readyVersions()]);
   } catch (error) {
-    if (error instanceof NotConfigured) {
-      return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "3rem 1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem" }}>Setup required</h1>
-          <p style={{ color: "#8b949e" }}>{error.message}</p>
-        </main>
-      );
-    }
+    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
     throw error;
   }
 
   return (
-    <main style={{ maxWidth: 1000, margin: "0 auto", padding: "3rem 1.5rem" }}>
-      <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>Runs</h1>
-      <p style={{ color: "#8b949e", marginTop: 0 }}>
-        Durable async jobs. The agent workflow itself lands in Phase 4 — until then a run is
-        claimed and terminates as <em>abstained</em> rather than inventing an answer.
+    <>
+      <h1 className="cru-page-title">Runs</h1>
+      <p className="cru-page-lede">
+        Durable async jobs. The agent claims a run, plans, generates and executes code in the
+        sandbox, verifies, and answers with provenance — or abstains, or routes to human review.
       </p>
 
+      <Panel title="Start a run">
+        <NewRunForm versions={versions} />
+      </Panel>
+
       <Panel title={`${runs.length} run${runs.length === 1 ? "" : "s"}`}>
-        <Table
+        <DataTable
           headers={["Run", "Question", "Status", "Outcome", "Created"]}
-          empty="No runs yet. POST /v1/runs with a ready dataset version."
+          empty="No runs yet. Start one above."
+          columnStyles={[undefined, { maxWidth: 340 }, undefined, undefined, { whiteSpace: "nowrap" }]}
           rows={runs.map((run) => [
-            <a key="id" href={`/runs/${run.id}`} style={{ color: "#58a6ff" }}>
+            <Link key="id" href={`/runs/${run.id}`}>
               <Mono>{run.id.slice(0, 8)}</Mono>
-            </a>,
-            <span key="q" style={{ display: "block", maxWidth: 320 }}>
-              {run.question}
-            </span>,
+            </Link>,
+            <span key="q">{run.question}</span>,
             <StatusBadge key="s" status={run.status} />,
-            <span key="d" style={{ color: "#8b949e" }}>
+            <span key="d" className="cru-muted">
               {run.failure_category ?? run.terminal_detail?.slice(0, 60) ?? "—"}
             </span>,
-            <span key="c" style={{ color: "#8b949e", whiteSpace: "nowrap" }}>
+            <span key="c" className="cru-muted">
               {new Date(run.created_at).toLocaleString()}
             </span>,
           ])}
         />
       </Panel>
-    </main>
+    </>
   );
 }

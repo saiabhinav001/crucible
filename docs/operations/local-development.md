@@ -41,7 +41,9 @@ unit tests → migration offline-SQL check → seed-suite reference calculators.
 |---|---|
 | API with reload | `uv run uvicorn --factory crucible_api.main:create_app --reload` |
 | Worker | `uv run arq crucible_worker.main.WorkerSettings` |
-| Web shell | `pnpm dev` → http://localhost:3000 |
+| Web app | `pnpm --filter web dev` → http://localhost:3100 |
+| Seed demo data | `uv run python scripts/seed_demo.py --slug demo` |
+| Web typecheck / build | `pnpm --filter web typecheck` · `pnpm --filter web build` |
 | OpenAPI docs | http://localhost:8000/docs |
 | Unit tests | `uv run pytest -m "not integration"` |
 | Integration tests | `docker compose up -d` then `uv run pytest -m integration` |
@@ -50,6 +52,18 @@ unit tests → migration offline-SQL check → seed-suite reference calculators.
 | MinIO console | http://localhost:9001 (crucible / crucible-local-only) |
 | Build the sandbox runner | `make sandbox-image` |
 | Run sandbox canaries | `make sandbox` (needs Docker + the runner image) |
+
+### The web app (Phase 7)
+
+The product UI (`apps/web`) is a Next.js App Router app over the public API plus
+a design system (`packages/ui`, transpiled from source — no build step). It
+authenticates with a server-side, org-scoped API key (`CRUCIBLE_API_KEY` in
+`apps/web/.env.local`); the key never reaches the browser. `pnpm install` links
+the workspace, then `scripts/seed_demo.py` populates a demo org so every page has
+content. Full walkthrough: [product-tour.md](product-tour.md); architecture:
+[web-frontend.md](../architecture/web-frontend.md). Critical-flow E2E tests live
+in `apps/web/e2e` (Playwright; `pnpm --filter web test:e2e`, browsers installed
+via `playwright install`).
 
 ### The execution sandbox (Phase 3)
 

@@ -79,19 +79,62 @@ export type Attempt = {
 
 export class NotConfigured extends Error {}
 
-async function get<T>(path: string): Promise<T> {
+/** A structured API error carrying the RFC-7807 problem detail when present. */
+export class ApiError extends Error {
+  status: number;
+  type: string;
+  constructor(status: number, type: string, detail: string) {
+    super(detail);
+    this.status = status;
+    this.type = type;
+  }
+}
+
+function requireKey(): string {
   if (!API_KEY) {
     throw new NotConfigured(
-      "CRUCIBLE_API_KEY is not set. Run scripts/bootstrap_org.py to mint one.",
+      "CRUCIBLE_API_KEY is not set. Run scripts/bootstrap_org.py to mint one, then set it in apps/web/.env.local.",
     );
   }
+  return API_KEY;
+}
+
+async function fail(response: Response, path: string): Promise<never> {
+  let type = "about:blank";
+  let detail = `${response.status}`;
+  try {
+    const body = (await response.json()) as { type?: string; detail?: string; title?: string };
+    type = body.type ?? type;
+    detail = body.detail ?? body.title ?? detail;
+  } catch {
+    /* non-JSON error body */
+  }
+  throw new ApiError(response.status, type, `API ${path} failed: ${detail}`);
+}
+
+async function get<T>(path: string): Promise<T> {
+  const key = requireKey();
   const response = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${API_KEY}` },
+    headers: { Authorization: `Bearer ${key}` },
     cache: "no-store",
   });
-  if (!response.ok) {
-    throw new Error(`API ${path} failed: ${response.status}`);
-  }
+  if (!response.ok) await fail(response, path);
+  return (await response.json()) as T;
+}
+
+async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const key = requireKey();
+  const response = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${key}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  if (!response.ok) await fail(response, path);
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -131,10 +174,58 @@ export type ReviewQueueItem = {
   verification: Record<string, unknown> | null;
 };
 
+export type Me = {
+  actor_type: string;
+  actor_id: string;
+  organization_id: string;
+  role: string;
+  permissions: string[];
+};
+
+export type ApiKeyInfo = {
+  id: string;
+  name: string;
+  prefix: string;
+  role: string;
+  scopes: string[] | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+};
+
+// The export-safe trace shape returned by GET /v1/runs/{id}/trace. Mirrors the
+// design system's ExportedTrace (kept here so lib stays free of a UI import).
+export type Trace = {
+  run_id: string;
+  tenant: string;
+  release: string;
+  model_ids: string[];
+  dataset_sha256: string | null;
+  redaction_state: string;
+  complete: boolean;
+  spans: Array<{ name: string; seq: number; attributes?: Record<string, unknown> }>;
+  question?: {
+    excerpt: string;
+    sha256: string;
+    length: number;
+    truncated: boolean;
+    redaction_state: string;
+  };
+};
+
+export type StartUpload = {
+  dataset_id: string;
+  version_id: string;
+  upload_url: string;
+  expires_seconds: number;
+};
+
 export const getReliability = () => get<Reliability>("/v1/metrics/reliability");
 export const getCostLatency = () => get<CostLatency>("/v1/metrics/cost");
 export const getAlerts = () => get<AlertRow[]>("/v1/metrics/alerts");
 export const getReviewQueue = () => get<ReviewQueueItem[]>("/v1/reviews");
+
+export const getMe = () => get<Me>("/v1/me");
+export const listApiKeys = () => get<ApiKeyInfo[]>("/v1/api-keys");
 
 export const listDatasets = () => get<Dataset[]>("/v1/datasets");
 export const listVersions = (datasetId: string) =>
@@ -143,3 +234,47 @@ export const listRuns = () => get<Run[]>("/v1/runs?limit=50");
 export const getRun = (runId: string) => get<Run>(`/v1/runs/${runId}`);
 export const getRunEvents = (runId: string) => get<RunEvent[]>(`/v1/runs/${runId}/events`);
 export const getRunAttempts = (runId: string) => get<Attempt[]>(`/v1/runs/${runId}/attempts`);
+export const getRunTrace = (runId: string) => get<Trace>(`/v1/runs/${runId}/trace`);
+
+// ------------------------------------------------------------------ mutations
+
+export const startUpload = (input: {
+  dataset_name: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}) => send<StartUpload>("POST", "/v1/datasets/uploads", input);
+
+export const completeUpload = (versionId: string, contentSha256: string) =>
+  send<DatasetVersion>("POST", `/v1/datasets/versions/${versionId}/complete`, {
+    content_sha256: contentSha256,
+  });
+
+export const createRun = (input: { dataset_version_id: string; question: string }) =>
+  send<Run>("POST", "/v1/runs", input);
+
+export const cancelRun = (runId: string) => send<Run>("POST", `/v1/runs/${runId}/cancel`);
+
+export const claimReview = (runId: string) =>
+  send<{ run_id: string; status: string; rubric_version: string; decision: string | null }>(
+    "POST",
+    `/v1/reviews/${runId}/claim`,
+  );
+
+export const submitReview = (
+  runId: string,
+  input: {
+    decision: "approve" | "reject";
+    grades: {
+      groundedness: number;
+      provenance: number;
+      usefulness: number;
+      uncertainty: number;
+    };
+  },
+) =>
+  send<{ run_id: string; status: string; rubric_version: string; decision: string | null }>(
+    "POST",
+    `/v1/reviews/${runId}/submit`,
+    input,
+  );

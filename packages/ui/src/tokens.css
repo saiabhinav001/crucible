@@ -1,0 +1,563 @@
+/*
+ * Crucible design tokens and component styles.
+ *
+ * One stylesheet, imported once in the app root. Colour, spacing, radius, and
+ * type are CSS custom properties so the whole system re-themes from a handful of
+ * values. Dark is the default; light is provided via `prefers-color-scheme` and
+ * can be forced with `data-theme` on <html> (the theme toggle sets it, and its
+ * override must win in both directions — WCAG-friendly, no colour-only meaning).
+ */
+
+:root {
+  /* neutral scale (dark default) */
+  --bg: #0b0e14;
+  --bg-elev: #11151f;
+  --panel: #0f131b;
+  --border: #232a36;
+  --border-strong: #313a49;
+  --fg: #e6e9ef;
+  --fg-muted: #9aa4b2;
+  --fg-subtle: #6b7484;
+
+  /* brand + accent */
+  --accent: #6ea8fe;
+  --accent-fg: #0b0e14;
+  --link: #6ea8fe;
+  --focus: #8ab4ff;
+
+  /* semantic status (each paired with an icon/label, never colour alone) */
+  --ok: #4ac26b;
+  --warn: #e0a516;
+  --danger: #f2685f;
+  --info: #6ea8fe;
+  --neutral: #9aa4b2;
+
+  /* geometry + type */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --maxw: 1080px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fa;
+    --bg-elev: #ffffff;
+    --panel: #ffffff;
+    --border: #d8dee4;
+    --border-strong: #c2cad3;
+    --fg: #1c2128;
+    --fg-muted: #57606a;
+    --fg-subtle: #7d8590;
+    --accent: #2f6feb;
+    --accent-fg: #ffffff;
+    --link: #0a58ca;
+    --focus: #2f6feb;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --danger: #cf222e;
+    --info: #0a58ca;
+    --neutral: #57606a;
+    --shadow: 0 1px 2px rgba(140, 149, 159, 0.2), 0 8px 24px rgba(140, 149, 159, 0.15);
+  }
+}
+
+/* Explicit overrides win over the media query in both directions. */
+:root[data-theme="light"] {
+  --bg: #f6f8fa;
+  --bg-elev: #ffffff;
+  --panel: #ffffff;
+  --border: #d8dee4;
+  --border-strong: #c2cad3;
+  --fg: #1c2128;
+  --fg-muted: #57606a;
+  --fg-subtle: #7d8590;
+  --accent: #2f6feb;
+  --accent-fg: #ffffff;
+  --link: #0a58ca;
+  --focus: #2f6feb;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --danger: #cf222e;
+  --info: #0a58ca;
+  --neutral: #57606a;
+  --shadow: 0 1px 2px rgba(140, 149, 159, 0.2), 0 8px 24px rgba(140, 149, 159, 0.15);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0e14;
+  --bg-elev: #11151f;
+  --panel: #0f131b;
+  --border: #232a36;
+  --border-strong: #313a49;
+  --fg: #e6e9ef;
+  --fg-muted: #9aa4b2;
+  --fg-subtle: #6b7484;
+  --accent: #6ea8fe;
+  --accent-fg: #0b0e14;
+  --link: #6ea8fe;
+  --focus: #8ab4ff;
+  --ok: #4ac26b;
+  --warn: #e0a516;
+  --danger: #f2685f;
+  --info: #6ea8fe;
+  --neutral: #9aa4b2;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Visible focus for keyboard users everywhere (WCAG 2.4.7). */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* -------------------------------------------------------------- app shell */
+
+.cru-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0 0 var(--radius-sm) 0;
+  z-index: 100;
+}
+.cru-skip:focus {
+  left: 0;
+}
+
+.cru-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.cru-header-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+.cru-brand {
+  font-weight: 700;
+  color: var(--fg);
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.cru-brand:hover {
+  text-decoration: none;
+}
+.cru-nav {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  flex: 1;
+}
+.cru-nav a {
+  color: var(--fg-muted);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+}
+.cru-nav a:hover {
+  background: var(--bg-elev);
+  color: var(--fg);
+  text-decoration: none;
+}
+.cru-nav a[aria-current="page"] {
+  color: var(--fg);
+  background: var(--bg-elev);
+  font-weight: 600;
+}
+
+.cru-main {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-7);
+}
+
+.cru-page-title {
+  font-size: 1.5rem;
+  margin: 0 0 var(--space-1);
+  letter-spacing: -0.02em;
+}
+.cru-page-lede {
+  color: var(--fg-muted);
+  margin: 0 0 var(--space-5);
+  max-width: 68ch;
+}
+
+/* -------------------------------------------------------------- panel */
+
+.cru-panel {
+  margin-top: var(--space-5);
+}
+.cru-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.cru-panel-title {
+  font-size: 1.02rem;
+  margin: 0;
+}
+.cru-panel-body {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow-x: auto;
+}
+.cru-panel-pad {
+  padding: var(--space-4) var(--space-5);
+}
+
+/* -------------------------------------------------------------- table */
+
+.cru-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.cru-table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.cru-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.cru-table tbody tr:last-child td,
+.cru-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.cru-table tbody tr:hover {
+  background: var(--bg-elev);
+}
+.cru-empty {
+  padding: var(--space-5);
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+/* -------------------------------------------------------------- metric grid */
+
+.cru-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.cru-metric {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: var(--space-4);
+}
+.cru-metric-label {
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+}
+.cru-metric-value {
+  font-size: 1.6rem;
+  font-weight: 650;
+  margin-top: var(--space-1);
+  letter-spacing: -0.02em;
+}
+.cru-metric-hint {
+  color: var(--fg-subtle);
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+/* -------------------------------------------------------------- badges */
+
+.cru-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cru-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+
+.cru-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 7px;
+  margin: 1px 3px 1px 0;
+}
+
+/* -------------------------------------------------------------- callout */
+
+.cru-callout {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
+  background: var(--panel);
+}
+.cru-callout-title {
+  font-weight: 600;
+  margin: 0 0 var(--space-1);
+}
+.cru-callout-body {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+.cru-callout.info {
+  border-left-color: var(--info);
+}
+.cru-callout.warn {
+  border-left-color: var(--warn);
+}
+.cru-callout.danger {
+  border-left-color: var(--danger);
+}
+.cru-callout.ok {
+  border-left-color: var(--ok);
+}
+
+/* -------------------------------------------------------------- forms */
+
+.cru-field {
+  display: block;
+  margin-bottom: var(--space-4);
+}
+.cru-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+.cru-hint {
+  color: var(--fg-subtle);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+.cru-input,
+.cru-select,
+.cru-textarea {
+  width: 100%;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: 0.92rem;
+}
+.cru-textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.cru-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+.cru-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.cru-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cru-btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.cru-btn-danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+}
+.cru-btn-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* -------------------------------------------------------------- code / kv */
+
+.cru-mono {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--fg-muted);
+}
+.cru-pre {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--fg);
+  margin: 0;
+}
+.cru-kv {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  margin: 0;
+  font-size: 0.9rem;
+}
+.cru-kv dt {
+  color: var(--fg-muted);
+}
+.cru-kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* -------------------------------------------------------------- trace */
+
+.cru-trace {
+  padding: var(--space-4) var(--space-5);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cru-span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 5px 0;
+  font-size: 0.86rem;
+}
+.cru-span-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+.cru-span-bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  opacity: 0.85;
+  flex: none;
+}
+.cru-span-meta {
+  color: var(--fg-subtle);
+  font-size: 0.78rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- misc */
+
+.cru-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.cru-muted {
+  color: var(--fg-muted);
+}
+.cru-cluster {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .cru-header-inner,
+  .cru-main {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+  .cru-kv {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+  .cru-kv dt {
+    margin-top: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}

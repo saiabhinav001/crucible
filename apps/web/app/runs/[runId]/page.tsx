@@ -1,70 +1,106 @@
-// Run detail (server component): the answer with provenance, the verification
-// vector, the node timeline, and the per-step attempts. This is the page that
-// makes the agent's reasoning legible — every claim is backed by evidence.
-import { getRun, getRunAttempts, getRunEvents, NotConfigured } from "@/lib/api";
-import { Mono, Panel, StatusBadge, Table } from "../../ui";
+// Run detail (Server Component): the answer with provenance, the verification
+// vector, the redacted trace, the config manifest, the node timeline, and the
+// per-step attempts. This is the page that makes the agent's reasoning legible —
+// every claim is backed by evidence.
+import {
+  ConfigView,
+  DataTable,
+  KeyValue,
+  Mono,
+  Panel,
+  StatusBadge,
+  Trace,
+  type ExportedTrace,
+} from "@crucible/ui";
+import Link from "next/link";
+
+import {
+  getRun,
+  getRunAttempts,
+  getRunEvents,
+  getRunTrace,
+  NotConfigured,
+  type Trace as TraceData,
+} from "@/lib/api";
+
+import { SetupRequired } from "../../_setup";
+import { RunActions } from "./run-actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function RunDetail({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
-  let run, events, attempts;
+  let run, events, attempts, trace: TraceData | null;
   try {
     [run, events, attempts] = await Promise.all([
       getRun(runId),
       getRunEvents(runId),
       getRunAttempts(runId),
     ]);
-  } catch (error) {
-    if (error instanceof NotConfigured) {
-      return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "3rem 1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem" }}>Setup required</h1>
-          <p style={{ color: "#8b949e" }}>{error.message}</p>
-        </main>
-      );
+    try {
+      trace = await getRunTrace(runId);
+    } catch {
+      trace = null; // trace is best-effort; the rest of the page still renders
     }
+  } catch (error) {
+    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
     throw error;
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: "3rem 1.5rem" }}>
-      <a href="/runs" style={{ color: "#58a6ff", fontSize: "0.85rem" }}>
+    <>
+      <Link href="/runs" style={{ fontSize: "0.85rem" }}>
         ← all runs
-      </a>
-      <h1 style={{ fontSize: "1.4rem", marginBottom: 4, marginTop: "0.75rem" }}>{run.question}</h1>
-      <p style={{ marginTop: 0 }}>
-        <StatusBadge status={run.status} /> <Mono>{run.id.slice(0, 8)}</Mono>
+      </Link>
+      <div className="cru-toolbar" style={{ marginTop: "var(--space-3)" }}>
+        <h1 className="cru-page-title" style={{ margin: 0 }}>
+          {run.question}
+        </h1>
+        <RunActions runId={run.id} status={run.status} />
+      </div>
+      <p className="cru-cluster" style={{ marginTop: 0 }}>
+        <StatusBadge status={run.status} /> <Mono>{run.id}</Mono>
       </p>
 
       {run.answer ? (
-        <Panel title="Answer">
-          <div style={{ padding: "1rem 1.25rem" }}>
-            <p style={{ fontSize: "1.1rem", margin: "0 0 0.5rem" }}>{run.answer.text}</p>
-            <p style={{ color: "#8b949e", fontSize: "0.85rem", margin: 0 }}>
+        <Panel title="Answer" pad>
+          <p style={{ fontSize: "1.15rem", margin: "0 0 var(--space-2)" }}>{run.answer.text}</p>
+          {run.answer.limitations && (
+            <p className="cru-muted" style={{ margin: "0 0 var(--space-4)", fontSize: "0.9rem" }}>
               {run.answer.limitations}
             </p>
-            <dl style={{ color: "#8b949e", fontSize: "0.85rem", marginTop: "1rem" }}>
-              <div>operation: <Mono>{run.answer.provenance.operation}</Mono></div>
-              <div>columns used: <Mono>{run.answer.provenance.columns_used.join(", ") || "—"}</Mono></div>
-              <div>code sha256: <Mono>{run.answer.provenance.code_sha256.slice(0, 16)}</Mono></div>
-              <div>attempts: {run.answer.provenance.attempt_count}</div>
-              <div>executor: <Mono>{run.answer.provenance.executor_backend}</Mono> {run.answer.provenance.image_ref && <Mono>({run.answer.provenance.image_ref})</Mono>}</div>
-            </dl>
-          </div>
+          )}
+          <KeyValue
+            items={[
+              ["value", <Mono key="v">{String(run.answer.value)}</Mono>],
+              ["operation", <Mono key="o">{run.answer.provenance.operation}</Mono>],
+              [
+                "columns used",
+                <Mono key="c">{run.answer.provenance.columns_used.join(", ") || "—"}</Mono>,
+              ],
+              ["code sha256", <Mono key="s">{run.answer.provenance.code_sha256.slice(0, 24)}</Mono>],
+              ["attempts", run.answer.provenance.attempt_count],
+              [
+                "executor",
+                <Mono key="e">
+                  {run.answer.provenance.executor_backend} {run.answer.provenance.image_ref}
+                </Mono>,
+              ],
+            ]}
+          />
         </Panel>
       ) : (
-        <Panel title="Outcome">
-          <p style={{ padding: "1rem 1.25rem", margin: 0, color: "#8b949e" }}>
-            {run.terminal_detail ?? "No answer was produced."}
+        <Panel title="Outcome" pad>
+          <p className="cru-muted" style={{ margin: 0 }}>
+            {run.terminal_detail ?? "No answer was produced (the run has not terminated with one)."}
           </p>
         </Panel>
       )}
 
       {run.verification && (
         <Panel title="Verification">
-          <Table
-            headers={["check", "result"]}
+          <DataTable
+            headers={["Check", "Result"]}
             empty="—"
             rows={Object.entries(run.verification)
               .filter(([k]) => k !== "reasons")
@@ -73,9 +109,19 @@ export default async function RunDetail({ params }: { params: Promise<{ runId: s
         </Panel>
       )}
 
+      {trace && (
+        <Panel title="Trace (redacted, export-safe)">
+          <Trace trace={trace as ExportedTrace} />
+        </Panel>
+      )}
+
+      <Panel title="Config manifest">
+        <ConfigView config={run.config_manifest} />
+      </Panel>
+
       <Panel title="Node timeline">
-        <Table
-          headers={["#", "event", "node"]}
+        <DataTable
+          headers={["#", "Event", "Node / status"]}
           empty="No events yet."
           rows={events.map((e) => [
             e.sequence_no,
@@ -86,8 +132,8 @@ export default async function RunDetail({ params }: { params: Promise<{ runId: s
       </Panel>
 
       <Panel title="Attempts">
-        <Table
-          headers={["#", "kind", "model", "exit", "ms", "code"]}
+        <DataTable
+          headers={["#", "Kind", "Model", "Exit", "ms", "Code sha256"]}
           empty="No attempts."
           rows={attempts.map((a) => [
             a.attempt_no,
@@ -99,6 +145,6 @@ export default async function RunDetail({ params }: { params: Promise<{ runId: s
           ])}
         />
       </Panel>
-    </main>
+    </>
   );
 }

@@ -10,32 +10,49 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 6 complete (observability, online eval, and human review)
+## Status: Phase 7 complete (product dashboard, review UX, and docs)
 
-Phases 0–5 built the platform, data plane, sandbox, the durable agent, and the
-offline regression gate. **Phase 6 makes runs accountable**: every terminal run
-shows a redacted trace, cost, latency, versions, and a failure taxonomy; a
-reviewer can safely score a run; the judge is calibrated against held-out human
-labels and confined to secondary criteria; and reliability alerts are exercised.
+Phases 0–6 built the platform, data plane, sandbox, the durable agent, the
+offline regression gate, and the observability/review layer. **Phase 7 makes the
+system legible**: the whole user journey — upload → run → evidence → compare →
+review — is completable in the UI, with no internal tools.
 
-- **One redaction boundary.** Nothing leaves the trust boundary — an exported
-  trace, a judge call — without passing through `crucible.observability.redaction`:
-  secrets and PII become typed markers, prompts become bounded excerpts + hashes,
-  and traces carry a salted tenant *pseudonym*, never the raw org id (threat T8).
-- **Trace completeness as the DoD metric.** A run you cannot fully explain is a
-  reliability defect; completeness, reliability, cost/latency, and the failure
-  taxonomy are pure functions over telemetry, unit-tested without a stack.
-- **Safe human review.** Claim→submit with an exclusive optimistic lock (one
-  reviewer per run), a versioned rubric, and grades recorded as typed `human`
-  scores that never gate correctness.
-- **Calibrated, secondary judge.** The LLM-as-judge scores explanation quality
-  only, calibrated with quadratic-weighted Cohen's kappa against a held-out set;
-  the [agreement report](docs/evaluation/judge-calibration-report.md) is published.
-- **Online eval + alerts.** An hourly per-tenant sampler records deterministic
-  drift checks; SLO alerts fire on trace-completeness, completion, and abstention
-  with linked [runbooks](docs/operations/alert-runbook.md).
+- **A real design system** (`packages/ui`): theme-aware tokens (light/dark), and
+  reusable `StatusBadge` / `DataTable` / `Trace` / `ConfigView` / `MetricCard`
+  components, shipped as source and transpiled into the app.
+- **The full journey in the browser.** Upload straight to storage (bytes never
+  touch the API or the web server), start runs, inspect the redacted trace and
+  provenance behind every answer, compare a candidate against the baseline, and
+  claim → grade → resolve a review — each an authenticated, tenant-scoped action.
+- **The credential is the session.** The web app authenticates with a
+  server-side, org-scoped API key that never reaches the browser; the UI mirrors
+  the API's authorization (see `/settings`) rather than inventing its own, so it
+  cannot leak another tenant's data.
+- **Accessible and responsive.** Semantic landmarks, a skip link, keyboard-first
+  controls with visible focus, status never by colour alone, fluid layouts, and
+  tables that scroll inside their panel — light and dark.
+- **Report export + demo seeding.** Download a comparison as JSON (the exact
+  CI-gated bytes) or Markdown; `scripts/seed_demo.py` populates a demo org so the
+  dashboard has real content in one command.
 
-See [docs/operations/observability.md](docs/operations/observability.md).
+See the [product tour](docs/operations/product-tour.md) and the
+[web architecture](docs/architecture/web-frontend.md).
+
+```bash
+uv run python scripts/seed_demo.py --slug demo   # populate a demo org
+pnpm --filter web dev                            # http://localhost:3100
+```
+
+<details><summary>Earlier: Phase 6 — observability, online eval, and human review</summary>
+
+Every terminal run shows a redacted trace, cost, latency, versions, and a failure
+taxonomy; a reviewer can safely score a run; the judge is calibrated against
+held-out human labels and confined to secondary criteria; reliability alerts are
+exercised. One redaction boundary (`crucible.observability.redaction`) gates
+everything that leaves the trust boundary (threat T8); trace completeness is the
+DoD metric. See [docs/operations/observability.md](docs/operations/observability.md).
+
+</details>
 
 <details><summary>Earlier: Phase 5 — offline evaluation harness + regression gate</summary>
 
