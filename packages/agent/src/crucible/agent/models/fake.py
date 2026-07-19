@@ -18,6 +18,7 @@ import re
 from collections import deque
 from typing import Any
 
+from crucible.agent.models import registry  # module import: safe during pkg init
 from crucible.agent.models.codegen import generate_source
 from crucible.agent.ports import ModelRole, ModelUsage
 from crucible.agent.schemas import (
@@ -71,6 +72,8 @@ def _match_column(
 
 
 class FakeModel:
+    MODEL_ID = registry.FAKE_TEMPLATE_ID
+
     def __init__(self, scripts: dict[ModelRole, list[Any]] | None = None) -> None:
         self._scripts: dict[ModelRole, deque[Any]] = {
             role: deque(items) for role, items in (scripts or {}).items()
@@ -81,7 +84,7 @@ class FakeModel:
         return {
             role.value: {
                 "provider": "fake",
-                "model_id": "fake-template",
+                "model_id": self.MODEL_ID,
                 "prompt_version": PROMPT_VERSION,
                 "policy_version": POLICY_VERSION,
                 "params": {},
@@ -93,18 +96,36 @@ class FakeModel:
         queue = self._scripts.get(role)
         return queue.popleft() if queue else None
 
+    def _usage(self, prompt: str, completion: str) -> ModelUsage:
+        # Deterministic token estimates x the registry's declared (synthetic)
+        # price, so cost attribution flows through the same pipeline as a real
+        # provider's reported usage.
+        tokens_in = registry.estimate_tokens(prompt)
+        tokens_out = registry.estimate_tokens(completion)
+        return ModelUsage(
+            provider="fake",
+            model_id=self.MODEL_ID,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=registry.compute_cost(
+                self.MODEL_ID, tokens_in=tokens_in, tokens_out=tokens_out
+            ),
+        )
+
     @staticmethod
-    def _usage() -> ModelUsage:
-        return ModelUsage(provider="fake", model_id="fake-template", cost_usd=0.0)
+    def _prompt_text(question: str, profile: list[ColumnView]) -> str:
+        return question + " " + " ".join(f"{c.name}:{c.dtype}" for c in profile)
 
     # -------------------------------------------------------------------- plan
     async def plan(
         self, *, question: str, profile: list[ColumnView]
     ) -> tuple[AnalysisPlan, ModelUsage]:
+        prompt = self._prompt_text(question, profile)
         scripted = self._scripted(ModelRole.PLANNER)
         if isinstance(scripted, AnalysisPlan):
-            return scripted, self._usage()
-        return self._plan_from_question(question, profile), self._usage()
+            return scripted, self._usage(prompt, scripted.model_dump_json())
+        plan = self._plan_from_question(question, profile)
+        return plan, self._usage(prompt, plan.model_dump_json())
 
     def _plan_from_question(self, question: str, profile: list[ColumnView]) -> AnalysisPlan:
         q = question.lower()
@@ -225,24 +246,54 @@ class FakeModel:
     async def code(
         self, *, plan: AnalysisPlan, profile: list[ColumnView]
     ) -> tuple[GeneratedCode, ModelUsage]:
+        prompt = plan.model_dump_json()
         scripted = self._scripted(ModelRole.CODER)
         if isinstance(scripted, (GeneratedCode, str)):
             src = scripted.source if isinstance(scripted, GeneratedCode) else scripted
-            return GeneratedCode(source=src, explanation="scripted"), self._usage()
-        return GeneratedCode(
-            source=generate_source(plan), explanation=plan.rationale
-        ), self._usage()
+            return GeneratedCode(source=src, explanation="scripted"), self._usage(prompt, src)
+        source = generate_source(plan)
+        return GeneratedCode(source=source, explanation=plan.rationale), self._usage(prompt, source)
 
     # ------------------------------------------------------------------ repair
     async def repair(
         self, *, plan: AnalysisPlan, profile: list[ColumnView], prior_code: str, error: str
     ) -> tuple[GeneratedCode, ModelUsage]:
+        prompt = plan.model_dump_json() + prior_code + error
         scripted = self._scripted(ModelRole.REPAIR)
         if isinstance(scripted, (GeneratedCode, str)):
             src = scripted.source if isinstance(scripted, GeneratedCode) else scripted
-            return GeneratedCode(source=src, explanation="scripted repair"), self._usage()
+            return GeneratedCode(source=src, explanation="scripted repair"), self._usage(
+                prompt, src
+            )
         # The template coder is deterministic, so regenerating the same plan
         # yields the same code. That is intentional: a deterministic error will
         # reproduce, the oscillation guard will fire, and the run abstains rather
         # than looping. (A real model would attempt an actual fix here.)
-        return GeneratedCode(source=generate_source(plan), explanation="regenerated"), self._usage()
+        source = generate_source(plan)
+        return GeneratedCode(source=source, explanation="regenerated"), self._usage(prompt, source)
+
+
+class FakeLiteModel(FakeModel):
+    """The tier-1 "cheap" gateway for the two-tier router.
+
+    Deliberately narrower than the reference template model: it plans only the
+    simple aggregate shapes (sum / count / mean). Anything else abstains with a
+    rationale, which the router's declared policy escalates to tier 2 — so the
+    routed pipeline trades extra cost on hard questions for a much cheaper
+    happy path, without inventing answers at the cheap tier.
+    """
+
+    MODEL_ID = registry.FAKE_LITE_ID
+
+    _LITE_OPS = frozenset({Operation.SUM, Operation.COUNT, Operation.MEAN})
+
+    def _plan_from_question(self, question: str, profile: list[ColumnView]) -> AnalysisPlan:
+        plan = super()._plan_from_question(question, profile)
+        if plan.operation in self._LITE_OPS or plan.is_abstain:
+            return plan
+        return AnalysisPlan(
+            operation=Operation.ABSTAIN,
+            answer_kind=AnswerKind.ABSTAIN,
+            rationale=f"beyond tier-1 scope ({plan.operation.value})",
+            confidence=0.0,
+        )

@@ -17,15 +17,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from crucible.agent import (
     AgentPersistence,
+    AnswerCache,
     AttemptRecord,
+    CachedAnswer,
     ColumnView,
     DatasetView,
+    FakeLiteModel,
     FakeModel,
     ModelGateway,
     OpenAICompatModel,
+    RouterPolicy,
     RunView,
+    TieredModelGateway,
 )
-from crucible.db import SqlAgentStore, SqlDatasetRepository, SqlRunRepository
+from crucible.db import SqlAgentStore, SqlCacheStore, SqlDatasetRepository, SqlRunRepository
 from crucible.domain import RunEventType, RunStatus
 from crucible.execution import ExecutionLimits
 from crucible.storage import S3ObjectStorage
@@ -161,12 +166,97 @@ class SqlAgentPersistence(AgentPersistence):
             await s.commit()
 
 
+class SqlAnswerCache(AnswerCache):
+    """Adapts the org-scoped SqlCacheStore to the agent's AnswerCache port.
+    Each call is its own short transaction (matching SqlAgentPersistence)."""
+
+    def __init__(self, session_factory: async_sessionmaker[Any]) -> None:
+        self._factory = session_factory
+
+    async def lookup(self, *, organization_id: str, cache_key: str) -> CachedAnswer | None:
+        import uuid
+
+        async with self._factory() as s:
+            record = await SqlCacheStore(s).lookup(
+                organization_id=uuid.UUID(organization_id), cache_key=cache_key
+            )
+        if record is None:
+            return None
+        return CachedAnswer(
+            cache_key=record.cache_key,
+            dataset_sha256=record.dataset_sha256,
+            config_signature=record.config_signature,
+            answer=record.answer,
+            verification=record.verification,
+        )
+
+    async def store(
+        self,
+        *,
+        organization_id: str,
+        cache_key: str,
+        dataset_version_id: str,
+        dataset_sha256: str,
+        question_sha256: str,
+        config_signature: str,
+        answer: dict[str, Any],
+        verification: dict[str, Any] | None,
+    ) -> None:
+        import uuid
+
+        async with self._factory() as s:
+            await SqlCacheStore(s).store(
+                organization_id=uuid.UUID(organization_id),
+                cache_key=cache_key,
+                dataset_version_id=uuid.UUID(dataset_version_id),
+                dataset_sha256=dataset_sha256,
+                question_sha256=question_sha256,
+                config_signature=config_signature,
+                answer=answer,
+                verification=verification,
+            )
+            await s.commit()
+
+    async def record_hit(self, *, organization_id: str, cache_key: str) -> None:
+        import uuid
+
+        async with self._factory() as s:
+            await SqlCacheStore(s).record_hit(
+                organization_id=uuid.UUID(organization_id), cache_key=cache_key
+            )
+            await s.commit()
+
+    async def invalidate(self, *, organization_id: str, cache_key: str) -> None:
+        import uuid
+
+        async with self._factory() as s:
+            await SqlCacheStore(s).invalidate(
+                organization_id=uuid.UUID(organization_id), cache_key=cache_key
+            )
+            await s.commit()
+
+
 def build_model(settings: WorkerAppSettings) -> ModelGateway:
     if settings.model_backend == "openai_compat":
-        return OpenAICompatModel(
+        primary_model = OpenAICompatModel(
             base_url=settings.openai_base_url,
             api_key=settings.openai_api_key,
             model=settings.openai_model,
+        )
+        if settings.router_policy == "two-tier" and settings.openai_model_lite:
+            return TieredModelGateway(
+                primary=OpenAICompatModel(
+                    base_url=settings.openai_base_url,
+                    api_key=settings.openai_api_key,
+                    model=settings.openai_model_lite,
+                ),
+                secondary=primary_model,
+                policy=RouterPolicy(),
+            )
+        return primary_model
+    if settings.router_policy == "two-tier":
+        return TieredModelGateway(
+            primary=FakeLiteModel(), secondary=FakeModel(), policy=RouterPolicy()
         )
     return FakeModel()
 

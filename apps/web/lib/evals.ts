@@ -68,6 +68,46 @@ export function loadExampleReport(): EvalReport | null {
   }
 }
 
+export type RouterPolicySummary = {
+  policy_id: string;
+  policy_version: string;
+  config_hash: string;
+  n_cases: number;
+  accuracy: number;
+  answered: number;
+  abstained: number;
+  escalations: number;
+  fallbacks: number;
+  total_cost_usd: number;
+  cost_attribution_complete: boolean;
+  mean_latency_ms: number;
+  p95_latency_ms: number;
+  mean_execute_attempts: number;
+};
+
+export type RouterReport = {
+  generated_at: string;
+  git_sha: string;
+  suite: { id: string; version: string; hash: string };
+  executor_backend: string;
+  pricing_note: string;
+  policies: RouterPolicySummary[];
+  quality_gates: Record<
+    string,
+    { status: string; delta: number; ci_lo: number; ci_hi: number; tolerance: number }
+  >;
+  content_sha256: string;
+};
+
+export function loadRouterReport(): RouterReport | null {
+  try {
+    const path = join(repoRoot(), "evals", "reports", "examples", "router-comparison.json");
+    return JSON.parse(readFileSync(path, "utf-8")) as RouterReport;
+  } catch {
+    return null;
+  }
+}
+
 /** Renders a committed comparison report as a self-contained Markdown document
  * — the shareable, human-readable form of the CI-gated JSON artifact. */
 export function reportToMarkdown(report: EvalReport): string {

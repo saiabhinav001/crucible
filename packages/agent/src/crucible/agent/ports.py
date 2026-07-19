@@ -47,6 +47,11 @@ class ModelUsage:
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: float | None = None  # None => explicit "unknown cost" marker
+    # Routing evidence (Phase 8): when a tiered gateway escalated or fell back,
+    # the usage says so, and cost/tokens include the burned primary call — a
+    # report that hides retry cost is advertising, not measurement.
+    escalated: bool = False
+    route_reason: str | None = None
 
 
 class ModelGateway(Protocol):
@@ -74,6 +79,50 @@ class ModelGateway(Protocol):
         prior_code: str,
         error: str,
     ) -> tuple[GeneratedCode, ModelUsage]: ...
+
+
+# ------------------------------------------------------------------ exact cache
+
+
+@dataclass(frozen=True, slots=True)
+class CachedAnswer:
+    """A previously verified answer, replayed only when every identity input
+    matches (the key is tenant + dataset content + config + question)."""
+
+    cache_key: str
+    dataset_sha256: str
+    config_signature: str
+    answer: dict[str, Any]
+    verification: dict[str, Any] | None
+
+
+class AnswerCache(Protocol):
+    """Exact-match answer cache (Phase 8, feature-flagged; absent = disabled).
+
+    Implementations MUST scope lookups by organization in the query itself —
+    the org in the key is defense in depth, not the only control (threat T5).
+    Semantic caching is intentionally not part of this contract; it stays
+    disabled unless an approved evaluation supports it (master plan §12.3).
+    """
+
+    async def lookup(self, *, organization_id: str, cache_key: str) -> CachedAnswer | None: ...
+
+    async def store(
+        self,
+        *,
+        organization_id: str,
+        cache_key: str,
+        dataset_version_id: str,
+        dataset_sha256: str,
+        question_sha256: str,
+        config_signature: str,
+        answer: dict[str, Any],
+        verification: dict[str, Any] | None,
+    ) -> None: ...
+
+    async def record_hit(self, *, organization_id: str, cache_key: str) -> None: ...
+
+    async def invalidate(self, *, organization_id: str, cache_key: str) -> None: ...
 
 
 # ------------------------------------------------------------------ persistence

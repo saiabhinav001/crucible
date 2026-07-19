@@ -110,6 +110,20 @@ exercised in `tests/unit/test_observability_metrics_trace.py`
 `test_alerts_clear_when_healthy`), satisfying the DoD "an alert/runbook is
 exercised." Runbooks: [alert-runbook.md](../operations/alert-runbook.md).
 
+### Phase 8 — routing, exact cache, and budgets (2026-07-19)
+
+Efficiency features introduce two new abuse surfaces: a cache that could leak
+answers across boundaries, and a spend path that could run away. Detail in
+[docs/operations/efficiency.md](../operations/efficiency.md).
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| T5 cache leakage (cross-tenant / cross-dataset / cross-config) | The cache key binds tenant + dataset *content* hash + full config signature + normalized question; the unique constraint and every SQL read are org-scoped (defense in depth); a new dataset version or any model/prompt/policy change is a disjoint key. | `test_key_binds_tenant_dataset_config_and_question`, `test_other_tenant_never_hits`, `test_cache_cannot_cross_tenants_even_with_identical_content`, `test_sql_cache_lookup_is_org_scoped_even_with_a_stolen_key` |
+| Stale / forged cache entries | Hits re-validate the stored identity inputs; a mismatch is a counted *false hit*: the entry is invalidated and the run recomputed — a suspect entry is never served. Only fully verified answers are stored (never review/abstain outcomes). False hits surface on `/v1/metrics/cache` and the dashboard. | `test_false_hit_is_invalidated_and_recomputed`, `test_abstained_runs_are_never_cached`, `test_review_routed_answers_are_never_cached` |
+| Semantic-cache scope creep | No flag exists; enabling it requires a new evaluation, ADR, and threat-model pass (master plan §12.3). | code inspection: `AnswerCache` is exact-match only |
+| Runaway spend / cost-report gaming | Budget admission refuses before spending (audited denial); the ledger's reserves count in-flight work; settlement is idempotent under job re-delivery; escalated router calls bill the burned tier-1 call; unknown prices are `None`, never zero; synthetic prices are labeled in every report. | `test_admission_refuses_when_the_budget_is_exhausted`, `test_run_reserves_then_settles_actual_cost`, `test_usage_merge_with_unknown_cost_stays_unknown`, [router-experiment.md](../evaluation/router-experiment.md) |
+| Quality loss hidden behind savings | The routed policy is gated by the same paired bootstrap the release gate uses, on a held-out suite through the real sandbox; a BLOCK fails the CLI. | `python -m crucible.evaluation router` exit code; committed report |
+
 ## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3

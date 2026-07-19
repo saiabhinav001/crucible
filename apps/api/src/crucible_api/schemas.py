@@ -299,3 +299,24 @@ class ApiKeyOut(BaseModel):
 
 class CreatedApiKeyOut(ApiKeyOut):
     token: str = Field(description="The full API key. Shown once and never retrievable again.")
+
+
+# ---------------------------------------------------------------------- budget
+
+
+class BudgetOut(BaseModel):
+    monthly_limit_usd: float | None
+    month_spend_usd: float
+    remaining_usd: float | None
+
+
+class SetBudgetIn(BaseModel):
+    monthly_limit_usd: float = Field(ge=0)
+
+
+class CacheStatsOut(BaseModel):
+    hits: int
+    misses: int
+    false_hits: int
+    stores: int
+    hit_rate: float

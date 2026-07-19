@@ -27,6 +27,7 @@ from crucible.domain import TERMINAL_RUN_STATES, Principal, RunStatus
 from crucible_api.dependencies import (
     AgentStoreDep,
     AuditDep,
+    BudgetRepoDep,
     DatasetRepoDep,
     PrincipalDep,
     RequestIdDep,
@@ -58,6 +59,7 @@ async def create_run(
     datasets: DatasetRepoDep,
     audit: AuditDep,
     settings: SettingsDep,
+    budgets: BudgetRepoDep,
     request_id: RequestIdDep,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> RunOut:
@@ -69,6 +71,7 @@ async def create_run(
         queue=ArqJobQueue(request.app.state.queue_pool),
         audit=audit,
         release_id=settings.git_sha,
+        budgets=budgets,
     )(
         principal,
         CreateRunInput(

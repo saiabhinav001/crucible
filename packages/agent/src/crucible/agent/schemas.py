@@ -109,6 +109,9 @@ class Answer(BaseModel):
     text: str = ""
     provenance: Provenance
     limitations: str = ""
+    # True when this answer was replayed from the exact cache (Phase 8). The
+    # provenance still points at the original computation's evidence.
+    cached: bool = False
 
 
 class JudgeRubricScore(BaseModel):

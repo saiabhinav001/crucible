@@ -72,6 +72,7 @@ class AgentState(BaseModel):
     dataset_sha256: str | None = None
     dataset_ready: bool = True
     cache_key: str | None = None
+    config_signature: str | None = None  # gateway config digest bound into the cache key
 
     plan: AnalysisPlan | None = None
     plan_retry_used: bool = False  # the one structured-output retry for the planner

@@ -12,7 +12,14 @@ import {
   StatusBadge,
 } from "@crucible/ui";
 
-import { getAlerts, getCostLatency, getReliability, NotConfigured } from "@/lib/api";
+import {
+  getAlerts,
+  getBudget,
+  getCacheStats,
+  getCostLatency,
+  getReliability,
+  NotConfigured,
+} from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
 
@@ -23,12 +30,14 @@ function pct(v: number): string {
 }
 
 export default async function DashboardPage() {
-  let reliability, cost, alerts;
+  let reliability, cost, alerts, budget, cache;
   try {
-    [reliability, cost, alerts] = await Promise.all([
+    [reliability, cost, alerts, budget, cache] = await Promise.all([
       getReliability(),
       getCostLatency(),
       getAlerts(),
+      getBudget(),
+      getCacheStats(),
     ]);
   } catch (error) {
     if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
@@ -87,6 +96,41 @@ export default async function DashboardPage() {
           hint="runs with a cost"
         />
       </MetricGrid>
+
+      <section aria-labelledby="budget-title" style={{ marginTop: "var(--space-6)" }}>
+        <h2 id="budget-title" className="cru-panel-title">
+          Cost &amp; budget
+        </h2>
+        <MetricGrid>
+          <MetricCard
+            label="Monthly budget"
+            value={budget.monthly_limit_usd === null ? "—" : `$${budget.monthly_limit_usd}`}
+            hint={budget.monthly_limit_usd === null ? "unenforced (set in Settings)" : undefined}
+          />
+          <MetricCard label="Month spend" value={`$${budget.month_spend_usd.toFixed(4)}`} />
+          <MetricCard
+            label="Remaining"
+            value={budget.remaining_usd === null ? "—" : `$${budget.remaining_usd.toFixed(4)}`}
+          />
+        </MetricGrid>
+      </section>
+
+      <section aria-labelledby="cache-title" style={{ marginTop: "var(--space-6)" }}>
+        <h2 id="cache-title" className="cru-panel-title">
+          Exact cache safety
+        </h2>
+        <MetricGrid>
+          <MetricCard label="Hit rate" value={pct(cache.hit_rate)} hint="false hits count against" />
+          <MetricCard label="Hits" value={String(cache.hits)} />
+          <MetricCard label="Misses" value={String(cache.misses)} />
+          <MetricCard
+            label="False hits"
+            value={String(cache.false_hits)}
+            hint={cache.false_hits > 0 ? "investigate: identity inputs mismatched" : "target: 0"}
+          />
+          <MetricCard label="Stores" value={String(cache.stores)} />
+        </MetricGrid>
+      </section>
 
       <Panel title="Terminal states">
         <DataTable

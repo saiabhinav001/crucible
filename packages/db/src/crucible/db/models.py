@@ -26,10 +26,12 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -235,7 +237,7 @@ class AgentAttempt(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "attempt_no", name="uq_agent_attempts_run_id"),
         CheckConstraint(
-            "kind IN ('plan', 'code', 'execute', 'repair', 'verify')",
+            "kind IN ('plan', 'code', 'execute', 'repair', 'verify', 'route', 'cache')",
             name="kind_valid",
         ),
         Index("ix_agent_attempts_run_id_created_at", "run_id", "created_at"),
@@ -377,3 +379,75 @@ class HumanReview(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class Budget(Base):
+    """Per-organization monthly cost budget (Phase 8). Absent row = unenforced."""
+
+    __tablename__ = "budgets"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    monthly_limit_usd: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class BudgetEntry(Base):
+    """Append-only budget ledger: reserve at admission, settle/release at
+    terminal. Month spend = SUM(amount_usd) over the month, so reserves count
+    while a run is in flight and are reversed when it settles."""
+
+    __tablename__ = "budget_entries"
+    __table_args__ = (
+        Index("ix_budget_entries_organization_id_created_at", "organization_id", "created_at"),
+        Index(
+            "uq_budget_entries_run_id_kind",
+            "run_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("run_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # reserve|settle|release|adjust
+    amount_usd: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False)
+    detail: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class AnswerCacheEntry(Base):
+    """Exact-match verified answers (Phase 8, feature-flagged). The key binds
+    tenant + dataset content + config + question; the unique constraint and
+    every read are org-scoped, so entries cannot cross tenants (threat T5)."""
+
+    __tablename__ = "answer_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "cache_key", name="uq_answer_cache_organization_id_cache_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    cache_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    dataset_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    question_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_signature: Mapped[str] = mapped_column(String(32), nullable=False)
+    answer: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    verification: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()

@@ -149,6 +149,42 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router(args: argparse.Namespace) -> int:
+    """The held-out router experiment: the same suite under the default and
+    the two-tier routed policy, reported side by side (Phase 8)."""
+    from crucible.evaluation.efficiency import render_router_markdown, run_router_experiment
+
+    suite = load_suite(args.suite)
+    fixture, content = load_fixture(suite.fixture)
+    report = asyncio.run(
+        run_router_experiment(
+            suite,
+            fixture,
+            content,
+            executor=_build_executor(args.executor),
+            limits=ExecutionLimits(wall_seconds=25),
+            git_sha=_git_sha(),
+        )
+    )
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+    if args.md:
+        md = Path(args.md)
+        md.parent.mkdir(parents=True, exist_ok=True)
+        md.write_text(render_router_markdown(report), encoding="utf-8")
+    for policy in report["policies"]:
+        print(
+            f"{policy['policy_id']}: accuracy={policy['accuracy']} "
+            f"cost=${policy['total_cost_usd']} p95={policy['p95_latency_ms']}ms "
+            f"escalations={policy['escalations']} n={policy['n_cases']}"
+        )
+    for policy_id, gate in report["quality_gates"].items():
+        print(f"quality[{policy_id}]: {gate['status']} delta={gate['delta']}")
+    blocked = any(g["status"] == "block" for g in report["quality_gates"].values())
+    return 1 if blocked else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="crucible.evaluation")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -169,6 +205,13 @@ def main(argv: list[str] | None = None) -> int:
     base.add_argument("--notes", default="")
     base.add_argument("--tolerance", type=float, default=0.02)
     base.set_defaults(func=cmd_baseline)
+
+    router = sub.add_parser("router", help="run the held-out router experiment (Phase 8)")
+    router.add_argument("--suite", required=True)
+    router.add_argument("--executor", choices=["docker", "fake"], default="docker")
+    router.add_argument("--out", default="evals/reports/router-comparison.json")
+    router.add_argument("--md", default="")
+    router.set_defaults(func=cmd_router)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

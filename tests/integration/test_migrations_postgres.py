@@ -41,7 +41,7 @@ def test_upgrade_head_on_live_database() -> None:
     engine = sa.create_engine(DATABASE_URL)
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
-        assert version == "0004"
+        assert version == "0005"
         ext = conn.execute(
             sa.text("SELECT count(*) FROM pg_extension WHERE extname = 'vector'")
         ).scalar()

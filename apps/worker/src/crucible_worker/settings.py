@@ -76,5 +76,24 @@ class WorkerAppSettings(BaseSettings):
         default=None, validation_alias=AliasChoices("OPENAI_API_KEY")
     )
     openai_model: str | None = Field(default=None, validation_alias=AliasChoices("OPENAI_MODEL"))
+    # The tier-1 model for the two-tier router when the backend is openai_compat.
+    openai_model_lite: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENAI_MODEL_LITE")
+    )
+
+    # Phase 8 efficiency controls. Both default OFF; flipping either back is the
+    # documented rollback (no deploy, no data migration — see
+    # docs/operations/efficiency.md).
+    #   router_policy: "default" = single gateway; "two-tier" = cheap primary
+    #   with declared escalation/fallback (crucible.agent.router).
+    router_policy: Literal["default", "two-tier"] = Field(
+        default="default", validation_alias=AliasChoices("ROUTER_POLICY")
+    )
+    #   exact_cache_enabled: replay exactly verified answers keyed by
+    #   tenant+dataset-content+config+question. Semantic caching has no flag on
+    #   purpose: it stays disabled unless an approved evaluation supports it.
+    exact_cache_enabled: bool = Field(
+        default=False, validation_alias=AliasChoices("EXACT_CACHE_ENABLED")
+    )
 
     execution_wall_seconds: float = 20.0

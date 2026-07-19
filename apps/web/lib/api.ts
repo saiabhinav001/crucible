@@ -219,10 +219,28 @@ export type StartUpload = {
   expires_seconds: number;
 };
 
+export type Budget = {
+  monthly_limit_usd: number | null;
+  month_spend_usd: number;
+  remaining_usd: number | null;
+};
+
+export type CacheStats = {
+  hits: number;
+  misses: number;
+  false_hits: number;
+  stores: number;
+  hit_rate: number;
+};
+
 export const getReliability = () => get<Reliability>("/v1/metrics/reliability");
 export const getCostLatency = () => get<CostLatency>("/v1/metrics/cost");
 export const getAlerts = () => get<AlertRow[]>("/v1/metrics/alerts");
 export const getReviewQueue = () => get<ReviewQueueItem[]>("/v1/reviews");
+export const getBudget = () => get<Budget>("/v1/budget");
+export const getCacheStats = () => get<CacheStats>("/v1/metrics/cache");
+export const setBudget = (monthlyLimitUsd: number) =>
+  send<Budget>("PUT", "/v1/budget", { monthly_limit_usd: monthlyLimitUsd });
 
 export const getMe = () => get<Me>("/v1/me");
 export const listApiKeys = () => get<ApiKeyInfo[]>("/v1/api-keys");

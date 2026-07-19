@@ -12,6 +12,7 @@ from typing import Protocol
 from crucible.application.ports import (
     AgentAttemptRecord,
     ApiKeyRecord,
+    CacheStats,
     DatasetRecord,
     DatasetRepository,
     DatasetVersionRecord,
@@ -164,3 +165,12 @@ class ListScores:
         return await self._scores.list_scores(
             organization_id=principal.organization_id, target_type=target_type, target_id=target_id
         )
+
+
+class GetCacheStats:
+    def __init__(self, *, metrics: MetricsRepository) -> None:
+        self._metrics = metrics
+
+    async def __call__(self, principal: Principal) -> CacheStats:
+        _require(principal, Permission.RUN_READ)
+        return await self._metrics.cache_stats(organization_id=principal.organization_id)

@@ -21,6 +21,12 @@ from crucible.evaluation.comparator import (
     paired_bootstrap_ci,
 )
 from crucible.evaluation.config import EvalConfig
+from crucible.evaluation.efficiency import (
+    PolicyGateway,
+    default_policies,
+    render_router_markdown,
+    run_router_experiment,
+)
 from crucible.evaluation.governance import (
     Baseline,
     baseline_from_result,
@@ -70,9 +76,11 @@ __all__ = [
     "HoldoutItem",
     "Oracle",
     "OracleType",
+    "PolicyGateway",
     "baseline_from_result",
     "build_report",
     "default_judge",
+    "default_policies",
     "evaluate_gate",
     "load_baseline",
     "load_fixture",
@@ -82,8 +90,10 @@ __all__ = [
     "paired_bootstrap_ci",
     "quadratic_weighted_kappa",
     "render_markdown",
+    "render_router_markdown",
     "repo_evals_dir",
     "run_calibration",
+    "run_router_experiment",
     "score_case",
     "score_correctness",
     "score_policy",

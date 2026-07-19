@@ -189,6 +189,46 @@ class RunTelemetryRow:
 
 
 @dataclass(frozen=True, slots=True)
+class BudgetStatus:
+    """The org's monthly budget position. `monthly_limit_usd=None` means no
+    budget is configured and admission is unenforced."""
+
+    monthly_limit_usd: float | None
+    month_spend_usd: float
+
+    @property
+    def remaining_usd(self) -> float | None:
+        if self.monthly_limit_usd is None:
+            return None
+        return round(self.monthly_limit_usd - self.month_spend_usd, 6)
+
+
+@dataclass(frozen=True, slots=True)
+class CacheStats:
+    """Cache safety metrics derived from the per-run cache attempts."""
+
+    hits: int
+    misses: int
+    false_hits: int
+    stores: int
+
+    @property
+    def hit_rate(self) -> float:
+        total = self.hits + self.misses + self.false_hits
+        return round(self.hits / total, 4) if total else 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class CacheEntryRecord:
+    cache_key: str
+    dataset_version_id: uuid.UUID
+    dataset_sha256: str
+    config_signature: str
+    answer: dict[str, Any]
+    verification: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
 class AgentAttemptRecord:
     run_id: uuid.UUID
     attempt_no: int
@@ -417,6 +457,61 @@ class MetricsRepository(Protocol):
     async def run_telemetry(
         self, *, organization_id: uuid.UUID, limit: int = 200
     ) -> list[RunTelemetryRow]: ...
+
+    async def cache_stats(self, *, organization_id: uuid.UUID) -> CacheStats: ...
+
+
+class BudgetRepository(Protocol):
+    """The budget ledger (Phase 8). Entries are append-only; month spend is the
+    SUM of the current month's entries, so in-flight reserves count until
+    settlement reverses them."""
+
+    async def get_limit(self, organization_id: uuid.UUID) -> float | None: ...
+
+    async def set_limit(self, *, organization_id: uuid.UUID, monthly_limit_usd: float) -> None: ...
+
+    async def month_spend(self, organization_id: uuid.UUID) -> float: ...
+
+    async def add_entry(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        run_id: uuid.UUID | None,
+        kind: str,
+        amount_usd: float,
+        detail: str | None = None,
+    ) -> bool:
+        """False when a (run_id, kind) entry already exists — the idempotency
+        guard for at-least-once settlement."""
+        ...
+
+    async def reserve_amount(self, run_id: uuid.UUID) -> float | None: ...
+
+
+class CacheStore(Protocol):
+    """Exact answer cache rows. Every method is org-scoped in SQL; the worker
+    adapts this to the agent's AnswerCache port."""
+
+    async def lookup(
+        self, *, organization_id: uuid.UUID, cache_key: str
+    ) -> CacheEntryRecord | None: ...
+
+    async def store(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        cache_key: str,
+        dataset_version_id: uuid.UUID,
+        dataset_sha256: str,
+        question_sha256: str,
+        config_signature: str,
+        answer: dict[str, Any],
+        verification: dict[str, Any] | None,
+    ) -> None: ...
+
+    async def record_hit(self, *, organization_id: uuid.UUID, cache_key: str) -> None: ...
+
+    async def invalidate(self, *, organization_id: uuid.UUID, cache_key: str) -> None: ...
 
 
 # --------------------------------------------------------------- infrastructure

@@ -11,15 +11,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from crucible.agent import policy
+from crucible.agent.cache import compute_cache_key, config_signature, question_sha256
 from crucible.agent.models.codegen import generate_source  # noqa: F401 (referenced in prompts)
 from crucible.agent.ports import (
     AgentPersistence,
+    AnswerCache,
     AttemptRecord,
     DatasetView,
     ModelGateway,
 )
 from crucible.agent.provenance import build_answer, output_guard
-from crucible.agent.schemas import Provenance, VerificationDecision, VerificationVector
+from crucible.agent.schemas import (
+    Answer,
+    Provenance,
+    VerificationDecision,
+    VerificationVector,
+)
 from crucible.agent.state import AgentState, ExecutionEvidence, Node, TerminalReason
 from crucible.domain import FailureCategory
 from crucible.execution import (
@@ -45,6 +52,9 @@ class AgentContext:
     dataset: DatasetView
     dataset_bytes: bytes
     limits: ExecutionLimits
+    # Exact-answer cache (Phase 8). None = the feature flag is off, and the
+    # EXACT_CACHE node is a pass-through — the pre-Phase-8 behavior.
+    cache: AnswerCache | None = None
 
 
 class AgentNodes:
@@ -76,14 +86,79 @@ class AgentNodes:
         return NodeResult(Node.EXACT_CACHE)
 
     async def exact_cache(self, state: AgentState) -> NodeResult:
-        # Seam only in Phase 4: no cache during baseline-correctness work
-        # (master plan §12.3). The exact cache is a Phase 8 deliverable.
-        state.cache_key = None
-        return NodeResult(Node.ROUTE)
+        """Exact-match answer replay (feature-flagged; master plan §12.3).
+
+        The key binds tenant + dataset content + config signature + question,
+        and the adapter's lookup is additionally org-scoped in SQL. A hit is
+        re-validated against the stored identity inputs; any mismatch is a
+        *false hit*: it is counted, the entry is invalidated, and the run
+        proceeds as a miss — a suspect entry is never served.
+        """
+        cache = self.ctx.cache
+        if cache is None or not state.dataset_sha256:
+            state.cache_key = None
+            return NodeResult(Node.ROUTE)
+
+        sig = config_signature(self.ctx.model.manifest())
+        state.config_signature = sig
+        state.cache_key = compute_cache_key(
+            organization_id=state.organization_id,
+            dataset_sha256=state.dataset_sha256,
+            config_sig=sig,
+            question=state.question,
+        )
+        hit = await cache.lookup(organization_id=state.organization_id, cache_key=state.cache_key)
+        if hit is None:
+            await self._attempt(
+                state,
+                AttemptRecord(kind="cache", sequence_no=0, payload={"outcome": "miss"}),
+            )
+            return NodeResult(Node.ROUTE)
+
+        if hit.dataset_sha256 != state.dataset_sha256 or hit.config_signature != sig:
+            await cache.invalidate(organization_id=state.organization_id, cache_key=state.cache_key)
+            await self._attempt(
+                state,
+                AttemptRecord(kind="cache", sequence_no=0, payload={"outcome": "false_hit"}),
+            )
+            return NodeResult(Node.ROUTE)
+
+        answer = Answer.model_validate(hit.answer).model_copy(update={"cached": True})
+        state.answer = answer
+        if hit.verification is not None:
+            state.verification = VerificationVector.model_validate(hit.verification)
+        await cache.record_hit(organization_id=state.organization_id, cache_key=state.cache_key)
+        await self._attempt(
+            state,
+            AttemptRecord(
+                kind="cache",
+                sequence_no=0,
+                payload={"outcome": "hit", "key_prefix": state.cache_key[:12]},
+            ),
+        )
+        state.terminal_reason = TerminalReason.ANSWERED
+        state.detail = "served from the exact cache"
+        return NodeResult(Node.DONE)
 
     async def route(self, state: AgentState) -> NodeResult:
-        # Static single-policy routing; the measured router is Phase 8.
+        # Record the routing policy in effect as evidence (a route-decision
+        # span). Single-gateway deployments record the static policy marker.
+        manifest = self.ctx.model.manifest()
+        router = manifest.get("router") or {"policy_version": "single-tier@1"}
+        await self._attempt(
+            state, AttemptRecord(kind="route", sequence_no=0, payload={"router": router})
+        )
         return NodeResult(Node.PLAN)
+
+    @staticmethod
+    def _with_route(payload: dict[str, object], usage: object) -> dict[str, object]:
+        escalated = bool(getattr(usage, "escalated", False))
+        if escalated:
+            payload = {
+                **payload,
+                "route": {"escalated": True, "reason": getattr(usage, "route_reason", None)},
+            }
+        return payload
 
     async def plan(self, state: AgentState) -> NodeResult:
         plan, usage = await self.ctx.model.plan(question=state.question, profile=state.profile)
@@ -92,7 +167,7 @@ class AgentNodes:
             AttemptRecord(
                 kind="plan",
                 sequence_no=0,
-                payload=plan.model_dump(),
+                payload=self._with_route(plan.model_dump(), usage),
                 model_provider=usage.provider,
                 model_id=usage.model_id,
                 cost_usd=usage.cost_usd,
@@ -124,7 +199,7 @@ class AgentNodes:
             AttemptRecord(
                 kind="code",
                 sequence_no=0,
-                payload={"explanation": code.explanation},
+                payload=self._with_route({"explanation": code.explanation}, usage),
                 model_provider=usage.provider,
                 model_id=usage.model_id,
                 cost_usd=usage.cost_usd,
@@ -222,7 +297,7 @@ class AgentNodes:
             AttemptRecord(
                 kind="repair",
                 sequence_no=state.repair_count,
-                payload={"explanation": repaired.explanation},
+                payload=self._with_route({"explanation": repaired.explanation}, usage),
                 model_provider=usage.provider,
                 model_id=usage.model_id,
                 cost_usd=usage.cost_usd,
@@ -301,7 +376,38 @@ class AgentNodes:
             state.answer = None
             return self._abstain(state, f"output guard rejected the answer: {reason}")
         state.terminal_reason = TerminalReason.ANSWERED
+        await self._store_in_cache(state)
         return NodeResult(Node.DONE)
+
+    async def _store_in_cache(self, state: AgentState) -> None:
+        """Cache only a fully verified, freshly computed answer. Reviewed or
+        abstained runs are never cached (a human decision is not a lookup), and
+        a replayed hit is never re-stored."""
+        cache = self.ctx.cache
+        if (
+            cache is None
+            or state.cache_key is None
+            or state.config_signature is None
+            or state.answer is None
+            or state.answer.cached
+            or state.dataset_sha256 is None
+            or state.verification is None
+            or state.verification.decision is not VerificationDecision.ANSWER
+        ):
+            return
+        await cache.store(
+            organization_id=state.organization_id,
+            cache_key=state.cache_key,
+            dataset_version_id=state.dataset_version_id,
+            dataset_sha256=state.dataset_sha256,
+            question_sha256=question_sha256(state.question),
+            config_signature=state.config_signature,
+            answer=state.answer.model_dump(),
+            verification=state.verification.model_dump(),
+        )
+        await self._attempt(
+            state, AttemptRecord(kind="cache", sequence_no=1, payload={"outcome": "store"})
+        )
 
 
 DISPATCH = {

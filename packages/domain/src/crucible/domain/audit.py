@@ -15,6 +15,7 @@ class AuditAction(StrEnum):
     RUN_REVIEW_SUBMITTED = "run.review_submitted"
     API_KEY_CREATED = "api_key.created"
     API_KEY_REVOKED = "api_key.revoked"
+    BUDGET_SET = "org.budget_set"
     ROLE_CHANGED = "membership.role_changed"
     ACCESS_DENIED = "access.denied"
 

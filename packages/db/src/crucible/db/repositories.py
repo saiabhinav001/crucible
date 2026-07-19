@@ -19,6 +19,8 @@ from crucible.application.ports import (
     AgentAttemptRecord,
     ApiKeyRecord,
     AuditEntry,
+    CacheEntryRecord,
+    CacheStats,
     DatasetRecord,
     DatasetVersionRecord,
     MembershipRecord,
@@ -955,6 +957,189 @@ class SqlMetricsRepository:
                 )
             )
         return rows
+
+    async def cache_stats(self, *, organization_id: uuid.UUID) -> CacheStats:
+        rows = (
+            await self._s.execute(
+                select(m.AgentAttempt.payload).where(
+                    m.AgentAttempt.organization_id == organization_id,
+                    m.AgentAttempt.kind == "cache",
+                )
+            )
+        ).scalars()
+        counts = {"hit": 0, "miss": 0, "false_hit": 0, "store": 0}
+        for payload in rows:
+            outcome = str(payload.get("outcome", ""))
+            if outcome in counts:
+                counts[outcome] += 1
+        return CacheStats(
+            hits=counts["hit"],
+            misses=counts["miss"],
+            false_hits=counts["false_hit"],
+            stores=counts["store"],
+        )
+
+
+class SqlBudgetRepository:
+    """The budget ledger. Entries are append-only; the partial unique index on
+    (run_id, kind) makes reserve/settle idempotent under job re-delivery."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get_limit(self, organization_id: uuid.UUID) -> float | None:
+        row = await self._s.get(m.Budget, organization_id)
+        return None if row is None else float(row.monthly_limit_usd)
+
+    async def set_limit(self, *, organization_id: uuid.UUID, monthly_limit_usd: float) -> None:
+        row = await self._s.get(m.Budget, organization_id)
+        if row is None:
+            self._s.add(
+                m.Budget(organization_id=organization_id, monthly_limit_usd=monthly_limit_usd)
+            )
+        else:
+            row.monthly_limit_usd = monthly_limit_usd
+        await self._s.flush()
+
+    async def month_spend(self, organization_id: uuid.UUID) -> float:
+        now = _now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        total = (
+            await self._s.execute(
+                select(func.coalesce(func.sum(m.BudgetEntry.amount_usd), 0)).where(
+                    m.BudgetEntry.organization_id == organization_id,
+                    m.BudgetEntry.created_at >= month_start,
+                )
+            )
+        ).scalar_one()
+        return round(float(total), 6)
+
+    async def add_entry(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        run_id: uuid.UUID | None,
+        kind: str,
+        amount_usd: float,
+        detail: str | None = None,
+    ) -> bool:
+        if run_id is not None:
+            exists = (
+                await self._s.execute(
+                    select(m.BudgetEntry.id).where(
+                        m.BudgetEntry.run_id == run_id, m.BudgetEntry.kind == kind
+                    )
+                )
+            ).scalar_one_or_none()
+            if exists is not None:
+                return False
+        self._s.add(
+            m.BudgetEntry(
+                id=new_id(),
+                organization_id=organization_id,
+                run_id=run_id,
+                kind=kind,
+                amount_usd=amount_usd,
+                detail=detail,
+            )
+        )
+        await self._s.flush()
+        return True
+
+    async def reserve_amount(self, run_id: uuid.UUID) -> float | None:
+        amount = (
+            await self._s.execute(
+                select(m.BudgetEntry.amount_usd).where(
+                    m.BudgetEntry.run_id == run_id, m.BudgetEntry.kind == "reserve"
+                )
+            )
+        ).scalar_one_or_none()
+        return None if amount is None else float(amount)
+
+
+class SqlCacheStore:
+    """Exact answer cache rows. Every query filters on organization_id — the
+    org inside the cache key is defense in depth, not the only control."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def lookup(
+        self, *, organization_id: uuid.UUID, cache_key: str
+    ) -> CacheEntryRecord | None:
+        row = (
+            await self._s.execute(
+                select(m.AnswerCacheEntry).where(
+                    m.AnswerCacheEntry.organization_id == organization_id,
+                    m.AnswerCacheEntry.cache_key == cache_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        return CacheEntryRecord(
+            cache_key=row.cache_key,
+            dataset_version_id=row.dataset_version_id,
+            dataset_sha256=row.dataset_sha256,
+            config_signature=row.config_signature,
+            answer=row.answer,
+            verification=row.verification,
+        )
+
+    async def store(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        cache_key: str,
+        dataset_version_id: uuid.UUID,
+        dataset_sha256: str,
+        question_sha256: str,
+        config_signature: str,
+        answer: dict[str, Any],
+        verification: dict[str, Any] | None,
+    ) -> None:
+        existing = (
+            await self._s.execute(
+                select(m.AnswerCacheEntry.id).where(
+                    m.AnswerCacheEntry.organization_id == organization_id,
+                    m.AnswerCacheEntry.cache_key == cache_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return  # first write wins; identical inputs produce identical answers
+        self._s.add(
+            m.AnswerCacheEntry(
+                id=new_id(),
+                organization_id=organization_id,
+                cache_key=cache_key,
+                dataset_version_id=dataset_version_id,
+                dataset_sha256=dataset_sha256,
+                question_sha256=question_sha256,
+                config_signature=config_signature,
+                answer=answer,
+                verification=verification,
+            )
+        )
+        await self._s.flush()
+
+    async def record_hit(self, *, organization_id: uuid.UUID, cache_key: str) -> None:
+        await self._s.execute(
+            update(m.AnswerCacheEntry)
+            .where(
+                m.AnswerCacheEntry.organization_id == organization_id,
+                m.AnswerCacheEntry.cache_key == cache_key,
+            )
+            .values(hit_count=m.AnswerCacheEntry.hit_count + 1, last_hit_at=_now())
+        )
+
+    async def invalidate(self, *, organization_id: uuid.UUID, cache_key: str) -> None:
+        await self._s.execute(
+            delete(m.AnswerCacheEntry).where(
+                m.AnswerCacheEntry.organization_id == organization_id,
+                m.AnswerCacheEntry.cache_key == cache_key,
+            )
+        )
 
 
 class SqlAuditSink:

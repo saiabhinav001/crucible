@@ -11,6 +11,10 @@ from crucible.application.commands.api_keys import (
     CreatedApiKey,
     RevokeApiKey,
 )
+from crucible.application.commands.budget import (
+    GetBudgetStatus,
+    SetBudget,
+)
 from crucible.application.commands.datasets import (
     CompleteDatasetUpload,
     CompleteUploadInput,
@@ -32,6 +36,7 @@ from crucible.application.commands.reviews import (
     SubmitReview,
 )
 from crucible.application.commands.runs import (
+    RUN_COST_ESTIMATE_USD,
     CancelRun,
     CreateRun,
     CreateRunInput,
@@ -43,6 +48,11 @@ from crucible.application.ports import (
     ApiKeyRecord,
     AuditEntry,
     AuditSink,
+    BudgetRepository,
+    BudgetStatus,
+    CacheEntryRecord,
+    CacheStats,
+    CacheStore,
     Clock,
     DatasetRecord,
     DatasetRepository,
@@ -68,6 +78,7 @@ from crucible.application.ports import (
 )
 from crucible.application.queries.reads import (
     AttemptReader,
+    GetCacheStats,
     GetDatasetVersion,
     GetRun,
     GetRunTelemetry,
@@ -89,11 +100,17 @@ from crucible.application.services.authenticate import (
 __all__ = [
     "ONLINE_EVALUATOR_VERSION",
     "REVIEW_RUBRIC_VERSION",
+    "RUN_COST_ESTIMATE_USD",
     "AgentAttemptRecord",
     "ApiKeyRecord",
     "AttemptReader",
     "AuditEntry",
     "AuditSink",
+    "BudgetRepository",
+    "BudgetStatus",
+    "CacheEntryRecord",
+    "CacheStats",
+    "CacheStore",
     "CancelRun",
     "ClaimReview",
     "Clock",
@@ -108,6 +125,8 @@ __all__ = [
     "DatasetRecord",
     "DatasetRepository",
     "DatasetVersionRecord",
+    "GetBudgetStatus",
+    "GetCacheStats",
     "GetDatasetVersion",
     "GetRun",
     "GetRunTelemetry",
@@ -144,6 +163,7 @@ __all__ = [
     "ScoreInput",
     "ScoreRecord",
     "ScoreStore",
+    "SetBudget",
     "StartDatasetUpload",
     "StartUploadInput",
     "StartUploadResult",

@@ -4,17 +4,19 @@
 // — the UI mirrors the API's authorization, it does not invent its own.
 import { Callout, DataTable, KeyValue, Mono, Panel, StatusBadge, Tag } from "@crucible/ui";
 
-import { getMe, listApiKeys, NotConfigured } from "@/lib/api";
+import { getBudget, getMe, listApiKeys, NotConfigured } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
+import { BudgetForm } from "./budget-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  let me, keys;
+  let me, keys, budget;
   try {
     me = await getMe();
     keys = await listApiKeys();
+    budget = await getBudget();
   } catch (error) {
     if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
     throw error;
@@ -45,6 +47,15 @@ export default async function SettingsPage() {
             <Tag key={p}>{p}</Tag>
           ))}
         </div>
+      </Panel>
+
+      <Panel title="Monthly budget" pad>
+        <p className="cru-muted" style={{ margin: "0 0 var(--space-4)", fontSize: "0.9rem" }}>
+          {budget.monthly_limit_usd === null
+            ? "No budget is configured — run admission is unenforced."
+            : `Limit $${budget.monthly_limit_usd} · spent $${budget.month_spend_usd.toFixed(4)} this month · remaining $${budget.remaining_usd?.toFixed(4)}.`}
+        </p>
+        <BudgetForm currentLimit={budget.monthly_limit_usd} />
       </Panel>
 
       <Panel title="API keys">

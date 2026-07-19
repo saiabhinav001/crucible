@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from crucible.db import create_async_engine_from_url, install_selector_event_loop_policy
 from crucible.storage import S3ObjectStorage
-from crucible_worker.agent_runtime import build_limits, build_model
+from crucible_worker.agent_runtime import SqlAnswerCache, build_limits, build_model
 from crucible_worker.executor import build_executor
 from crucible_worker.jobs.datasets import profile_dataset_version
 from crucible_worker.jobs.online import run_online_checks
@@ -57,13 +57,18 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     ctx["executor"] = executor
     ctx["model"] = build_model(_settings)
     ctx["limits"] = build_limits(_settings)
+    # Phase 8 efficiency features, both opt-in; absent cache = node pass-through.
+    ctx["cache"] = SqlAnswerCache(ctx["session_factory"]) if _settings.exact_cache_enabled else None
     logger.info(
-        "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s model=%s",
+        "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s model=%s "
+        "router=%s exact_cache=%s",
         _settings.profile,
         _settings.git_sha,
         _settings.job_concurrency,
         executor.backend,
         _settings.model_backend,
+        _settings.router_policy,
+        _settings.exact_cache_enabled,
     )
 
 

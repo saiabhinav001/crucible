@@ -12,7 +12,7 @@ import logging
 from crucible.agent.errors import AgentError
 from crucible.agent.graph import GraphRunner
 from crucible.agent.nodes import AgentContext
-from crucible.agent.ports import AgentPersistence, ModelGateway
+from crucible.agent.ports import AgentPersistence, AnswerCache, ModelGateway
 from crucible.agent.state import AgentState, Node
 from crucible.domain import TERMINAL_RUN_STATES, RunStatus
 from crucible.execution import ExecutionLimits, Executor
@@ -26,6 +26,7 @@ async def _build_context(
     executor: Executor,
     limits: ExecutionLimits,
     dataset_version_id: str,
+    cache: AnswerCache | None = None,
 ) -> AgentContext:
     dataset = await persistence.load_dataset(dataset_version_id)
     if dataset is None:
@@ -38,6 +39,7 @@ async def _build_context(
         dataset=dataset,
         dataset_bytes=dataset_bytes,
         limits=limits,
+        cache=cache,
     )
 
 
@@ -49,6 +51,7 @@ async def run_agent(
     limits: ExecutionLimits,
     run_id: str,
     stop_after: Node | None = None,
+    cache: AnswerCache | None = None,
 ) -> str:
     """Claim a queued run and drive the graph, or resume a RUNNING run that a
     prior worker left mid-flight. Returns a short outcome string."""
@@ -69,7 +72,9 @@ async def run_agent(
         await persistence.emit_event(run_id, "terminal", {"status": RunStatus.CANCELLED.value})
         return "cancelled"
 
-    ctx = await _build_context(persistence, model, executor, limits, run.dataset_version_id)
+    ctx = await _build_context(
+        persistence, model, executor, limits, run.dataset_version_id, cache=cache
+    )
 
     if status is RunStatus.QUEUED:
         claimed = await persistence.transition(

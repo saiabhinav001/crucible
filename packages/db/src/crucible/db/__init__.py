@@ -6,6 +6,8 @@ from crucible.db.models import Base
 from crucible.db.repositories import (
     SqlAgentStore,
     SqlAuditSink,
+    SqlBudgetRepository,
+    SqlCacheStore,
     SqlDatasetRepository,
     SqlIdentityRepository,
     SqlMetricsRepository,
@@ -18,6 +20,8 @@ __all__ = [
     "Base",
     "SqlAgentStore",
     "SqlAuditSink",
+    "SqlBudgetRepository",
+    "SqlCacheStore",
     "SqlDatasetRepository",
     "SqlIdentityRepository",
     "SqlMetricsRepository",

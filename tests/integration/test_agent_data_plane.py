@@ -67,7 +67,7 @@ def test_agent_answers_and_api_surfaces_provenance(
     assert run["verification"]["decision"] == "answer"
 
     attempts = client.get(f"/v1/runs/{run_id}/attempts", headers=alice.auth).json()
-    assert [a["kind"] for a in attempts] == ["plan", "code", "execute", "verify"]
+    assert [a["kind"] for a in attempts] == ["route", "plan", "code", "execute", "verify"]
 
     events = client.get(f"/v1/runs/{run_id}/events", headers=alice.auth).json()
     nodes = [e["payload"].get("node") for e in events if "node" in e["payload"]]

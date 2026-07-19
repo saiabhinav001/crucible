@@ -13,6 +13,7 @@ from dataclasses import asdict
 from fastapi import APIRouter
 
 from crucible.application import (
+    GetCacheStats,
     GetRun,
     GetRunTelemetry,
     ListRunAttempts,
@@ -35,7 +36,7 @@ from crucible_api.dependencies import (
     PrincipalDep,
     RunRepoDep,
 )
-from crucible_api.schemas import AlertOut, CostLatencyOut, ReliabilityOut
+from crucible_api.schemas import AlertOut, CacheStatsOut, CostLatencyOut, ReliabilityOut
 
 router = APIRouter(prefix="/v1/metrics", tags=["observability"])
 trace_router = APIRouter(prefix="/v1/runs", tags=["observability"])
@@ -73,6 +74,18 @@ async def cost_metrics(
 ) -> CostLatencyOut:
     m = cost_latency(await _telemetry(principal, metrics, limit))
     return CostLatencyOut(**asdict(m))
+
+
+@router.get("/cache", response_model=CacheStatsOut)
+async def cache_metrics(principal: PrincipalDep, metrics: MetricsRepoDep) -> CacheStatsOut:
+    stats = await GetCacheStats(metrics=metrics)(principal)
+    return CacheStatsOut(
+        hits=stats.hits,
+        misses=stats.misses,
+        false_hits=stats.false_hits,
+        stores=stats.stores,
+        hit_rate=stats.hit_rate,
+    )
 
 
 @router.get("/alerts", response_model=list[AlertOut])

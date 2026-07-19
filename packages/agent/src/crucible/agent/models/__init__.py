@@ -1,4 +1,4 @@
-from crucible.agent.models.fake import FakeModel
+from crucible.agent.models.fake import FakeLiteModel, FakeModel
 from crucible.agent.models.judge import (
     JUDGE_RUBRIC_VERSION,
     FakeJudge,
@@ -6,12 +6,17 @@ from crucible.agent.models.judge import (
     OpenAICompatJudge,
 )
 from crucible.agent.models.openai_compat import OpenAICompatModel
+from crucible.agent.models.registry import ModelSpec, compute_cost, register
 
 __all__ = [
     "JUDGE_RUBRIC_VERSION",
     "FakeJudge",
+    "FakeLiteModel",
     "FakeModel",
     "Judge",
+    "ModelSpec",
     "OpenAICompatJudge",
     "OpenAICompatModel",
+    "compute_cost",
+    "register",
 ]

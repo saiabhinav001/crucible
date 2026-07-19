@@ -17,6 +17,7 @@ from crucible.agent.graph import GraphRunner
 from crucible.agent.nodes import AgentContext
 from crucible.agent.ports import (
     AgentPersistence,
+    AnswerCache,
     AttemptRecord,
     DatasetView,
     ModelGateway,
@@ -96,7 +97,11 @@ async def run_to_completion(
     question: str,
     dataset: DatasetView,
     dataset_bytes: bytes,
+    cache: AnswerCache | None = None,
 ) -> EvalTrace:
+    # `cache` defaults to None in evaluation: cached replays would corrupt the
+    # latency/cost measurements a policy report depends on. Cache-behavior
+    # tests inject an in-memory implementation deliberately.
     persistence = EphemeralPersistence(_dataset=dataset, _bytes=dataset_bytes)
     ctx = AgentContext(
         persistence=persistence,
@@ -105,6 +110,7 @@ async def run_to_completion(
         dataset=dataset,
         dataset_bytes=dataset_bytes,
         limits=limits,
+        cache=cache,
     )
     state = AgentState(
         run_id=f"eval-{uuid.uuid4().hex[:8]}",

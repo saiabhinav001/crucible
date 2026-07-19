@@ -14,6 +14,7 @@ import {
   completeUpload as apiCompleteUpload,
   createRun as apiCreateRun,
   NotConfigured,
+  setBudget as apiSetBudget,
   startUpload as apiStartUpload,
   submitReview as apiSubmitReview,
 } from "@/lib/api";
@@ -85,6 +86,19 @@ export async function claimReview(runId: string): Promise<ActionResult<{ status:
     const review = await apiClaimReview(runId);
     revalidatePath("/reviews");
     return { ok: true, data: { status: review.status } };
+  } catch (e) {
+    return toError(e);
+  }
+}
+
+export async function updateBudget(
+  monthlyLimitUsd: number,
+): Promise<ActionResult<{ remaining_usd: number | null }>> {
+  try {
+    const budget = await apiSetBudget(monthlyLimitUsd);
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+    return { ok: true, data: { remaining_usd: budget.remaining_usd } };
   } catch (e) {
     return toError(e);
   }

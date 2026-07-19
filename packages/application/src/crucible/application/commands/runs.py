@@ -15,6 +15,7 @@ from typing import Any
 from crucible.application.ports import (
     AuditEntry,
     AuditSink,
+    BudgetRepository,
     DatasetRepository,
     JobQueue,
     RunRecord,
@@ -55,6 +56,12 @@ class CreateRunInput:
     idempotency_key: str | None = None
 
 
+# The flat per-run reservation used for budget admission. Settlement replaces
+# it with the actual attempt cost when the run terminates; the estimate exists
+# so an organization at its limit is refused *before* spending, not after.
+RUN_COST_ESTIMATE_USD = 0.01
+
+
 class CreateRun:
     def __init__(
         self,
@@ -64,12 +71,14 @@ class CreateRun:
         queue: JobQueue,
         audit: AuditSink,
         release_id: str = "unknown",
+        budgets: BudgetRepository | None = None,
     ) -> None:
         self._runs = runs
         self._datasets = datasets
         self._queue = queue
         self._audit = audit
         self._release_id = release_id
+        self._budgets = budgets
 
     async def __call__(
         self, principal: Principal, data: CreateRunInput, *, request_id: str = ""
@@ -114,6 +123,36 @@ class CreateRun:
                 code="dataset-not-ready",
             )
 
+        # Budget admission (Phase 8): refuse before spending. Month spend
+        # includes in-flight reserves, so parallel submissions cannot stampede
+        # past the limit by racing settlement.
+        if self._budgets is not None:
+            limit = await self._budgets.get_limit(org)
+            if limit is not None:
+                spend = await self._budgets.month_spend(org)
+                if spend + RUN_COST_ESTIMATE_USD > limit:
+                    await self._audit.record(
+                        AuditEntry(
+                            organization_id=org,
+                            actor_type=principal.actor_type,
+                            actor_id=principal.actor_id,
+                            action=AuditAction.RUN_CREATED,
+                            result=AuditResult.DENIED,
+                            target_type="run",
+                            request_id=request_id,
+                            metadata={
+                                "reason": "budget-exhausted",
+                                "month_spend_usd": spend,
+                                "monthly_limit_usd": limit,
+                            },
+                        )
+                    )
+                    raise Conflict(
+                        "The organization's monthly budget is exhausted; "
+                        "raise the limit or wait for the next period.",
+                        code="budget-exhausted",
+                    )
+
         # The config manifest freezes every behavior-changing input known at
         # creation time (plan principle 5). Agent/model/prompt versions join it
         # in Phase 4 when the workflow exists to have them.
@@ -143,6 +182,14 @@ class CreateRun:
             event_type=RunEventType.CREATED,
             payload={"status": RunStatus.QUEUED.value},
         )
+        if self._budgets is not None and await self._budgets.get_limit(org) is not None:
+            await self._budgets.add_entry(
+                organization_id=org,
+                run_id=run.id,
+                kind="reserve",
+                amount_usd=RUN_COST_ESTIMATE_USD,
+                detail="admission reserve",
+            )
         await self._queue.enqueue("execute_run", str(run.id))
         await self._audit.record(
             AuditEntry(

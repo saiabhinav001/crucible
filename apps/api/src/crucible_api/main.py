@@ -43,6 +43,7 @@ from crucible.security import JwtVerifier, RedisRateLimiter
 from crucible.storage import S3ObjectStorage
 from crucible_api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 from crucible_api.probes import DatabaseProbe, RedisProbe
+from crucible_api.routers import budget as budget_router
 from crucible_api.routers import datasets as datasets_router
 from crucible_api.routers import identity as identity_router
 from crucible_api.routers import metrics as metrics_router
@@ -156,6 +157,7 @@ def create_app(
     app.include_router(runs_router.router)
     app.include_router(reviews_router.router)
     app.include_router(metrics_router.router)
+    app.include_router(budget_router.router)
     app.include_router(metrics_router.trace_router)
 
     @app.exception_handler(NotAuthenticated)

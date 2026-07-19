@@ -10,12 +10,38 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 7 complete (product dashboard, review UX, and docs)
+## Status: Phase 8 complete (measured routing, exact cache, budgets)
 
-Phases 0–6 built the platform, data plane, sandbox, the durable agent, the
-offline regression gate, and the observability/review layer. **Phase 7 makes the
-system legible**: the whole user journey — upload → run → evidence → compare →
-review — is completable in the UI, with no internal tools.
+Phases 0–7 built the platform, sandbox, durable agent, regression gate,
+observability, and the product UI. **Phase 8 reduces cost only where quality is
+measured**: every efficiency lever is declared, evidence-gated, and reversible
+with one setting.
+
+- **A declared two-tier router.** Tier-1 plans cheap questions and escalates on
+  abstain/low confidence; coder runs tier-1 because execution + verification
+  catch weak programs downstream. Escalations bill the burned tier-1 call. The
+  [held-out experiment](docs/evaluation/router-experiment.md) (real sandbox, 16
+  cases) shows the routed policy at **identical accuracy (paired Δ 0.0, gate
+  PASS) for 63% less cost** — with escalation counts in the open.
+- **An exact cache that cannot lie.** Keys bind tenant + dataset content +
+  config signature + question; SQL reads are org-scoped on top; hits re-validate
+  stored identity inputs and any mismatch is a counted, quarantined *false hit*.
+  Only fully verified answers are cached — never reviewed or abstained ones.
+  Semantic caching has no flag, by design.
+- **A budget ledger, not a counter.** Admission refuses runs *before* spending
+  (audited); reserves count in-flight work; settlement replaces the reserve with
+  the actual attempt cost, idempotently under job re-delivery.
+- **Honest cost accounting.** Costs come from a declared price registry;
+  unknown prices are `None`, never zero; the offline fakes carry labeled
+  synthetic prices so the whole pipeline is exercised end to end.
+- Dashboard gains budget + cache-safety panels; Settings sets the budget;
+  Evaluations shows the policy comparison. See
+  [docs/operations/efficiency.md](docs/operations/efficiency.md).
+
+<details><summary>Earlier: Phase 7 — product dashboard, review UX, and docs</summary>
+
+The whole user journey — upload → run → evidence → compare → review — is
+completable in the UI, with no internal tools.
 
 - **A real design system** (`packages/ui`): theme-aware tokens (light/dark), and
   reusable `StatusBadge` / `DataTable` / `Trace` / `ConfigView` / `MetricCard`
@@ -42,6 +68,8 @@ See the [product tour](docs/operations/product-tour.md) and the
 uv run python scripts/seed_demo.py --slug demo   # populate a demo org
 pnpm --filter web dev                            # http://localhost:3100
 ```
+
+</details>
 
 <details><summary>Earlier: Phase 6 — observability, online eval, and human review</summary>
 
