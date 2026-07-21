@@ -31,3 +31,12 @@ Thumbs.db
 # Playwright
 apps/web/test-results/
 apps/web/playwright-report/
+
+# OpenTofu / Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+**/terraform.tfvars
+!**/terraform.tfvars.example
+.terraform.lock.hcl

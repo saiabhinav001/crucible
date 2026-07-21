@@ -108,6 +108,7 @@ pythonpath = ["."]  # so security tests can import shared integration fixtures
 markers = [
     "integration: requires live Postgres/Redis (deselect with -m 'not integration')",
     "sandbox: requires a Docker daemon and the built runner image (canary suite)",
+    "load: load/soak + resilience game-day drills against the live stack (Phase 9)",
 ]
 addopts = "-q"
 

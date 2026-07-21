@@ -124,6 +124,23 @@ answers across boundaries, and a spend path that could run away. Detail in
 | Runaway spend / cost-report gaming | Budget admission refuses before spending (audited denial); the ledger's reserves count in-flight work; settlement is idempotent under job re-delivery; escalated router calls bill the burned tier-1 call; unknown prices are `None`, never zero; synthetic prices are labeled in every report. | `test_admission_refuses_when_the_budget_is_exhausted`, `test_run_reserves_then_settles_actual_cost`, `test_usage_merge_with_unknown_cost_stays_unknown`, [router-experiment.md](../evaluation/router-experiment.md) |
 | Quality loss hidden behind savings | The routed policy is gated by the same paired bootstrap the release gate uses, on a held-out suite through the real sandbox; a BLOCK fails the CLI. | `python -m crucible.evaluation router` exit code; committed report |
 
+### Phase 9 — production CI/CD, staging, and delivery hardening (2026-07-20)
+
+The delivery pipeline itself is a trust boundary (B6, threat T9): a compromised
+workflow or a long-lived cloud key is a path straight to production. Detail in
+[deployment-runbook.md](../operations/deployment-runbook.md) and
+[infra/opentofu/README.md](../../infra/opentofu/README.md).
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| T9 long-lived cloud credentials | Deploys authenticate to GCP via GitHub OIDC / Workload Identity Federation — no static JSON key exists. The deployer SA is least-privilege and usable only from this repo on `main`; runtime API/worker SAs are separate and disjoint. | `infra/opentofu/modules/wif`, `deploy-staging.yml`/`promote-production.yml` (`id-token: write`, no key) |
+| T9 poisoned / tampered actions | Every third-party action is pinned to a full commit SHA (not a moving tag); `zizmor` audits the workflows (pinning, template injection, credential persistence, least-privilege `permissions`) and gates PRs. | `zizmor` job in `security.yml` (clean); all `uses:` are `@<40-hex>` |
+| T9 untrusted PR execution | Credential-bearing workflows run only on `push`/`workflow_dispatch`, never `pull_request`; protected GitHub environments require reviewer approval; `pull_request_target` is not used; checkout uses `persist-credentials: false`. | `deploy-staging.yml`, `promote-production.yml`, `rollback.yml` (`environment:` + triggers) |
+| T9 supply-chain provenance | Images are built reproducibly from `uv.lock`, referenced by **digest**, cosign-signed (keyless), and carry a CycloneDX SBOM; production promotion **verifies the signature** before applying. | build/sign steps in `deploy-staging.yml`; `cosign verify` in `promote-production.yml` |
+| T10 vulnerable deps/images/IaC | Layered scanning required on PRs: gitleaks (history), pip-audit (deps), CodeQL (SAST), Semgrep (registry + repo guardrail rules), Trivy (fs/vuln/misconfig), Checkov (IaC). | `security.yml`, `iac.yml`, `.semgrep.yml`, `trivy.yaml` |
+| Unsafe migration rollback | Expand/contract discipline (semgrep forbids app-startup migrations); a code rollback is a traffic shift to the prior revision, always schema-compatible; DR is a data restore, never a schema downgrade. | [migration-runbook.md](../operations/migration-runbook.md), [rollback-runbook.md](../operations/rollback-runbook.md) |
+| Deploy without a proven recovery path | A non-destructive DR drill (`scripts/dr_drill.sh`) plants a marker, backs up, restores into a scratch DB, and verifies — with committed evidence. Resilience game days (provider outage, queue loss, worker crash) run as gated tests. | `docs/operations/evidence/dr-drill-*.md`; `tests/integration/test_resilience_gameday.py` (3 drills) |
+
 ## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3

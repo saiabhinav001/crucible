@@ -53,6 +53,19 @@ eval-baseline:        ## Regenerate the frozen baseline (reviewed change only)
 	uv run python -m crucible.evaluation baseline --suite evals/suites/core-v1.0.0.yaml \
 		--executor docker --out evals/baseline.json --approved-by "$(USER)"
 
+load:                 ## Load/soak + resilience game-day drills (needs the stack)
+	uv run pytest -m load
+
+dr-drill:             ## Non-destructive backup→restore drill; writes evidence
+	bash scripts/dr_drill.sh
+
+iac-check:            ## Format-check + validate the OpenTofu (needs tofu)
+	cd infra/opentofu && tofu fmt -recursive -check && \
+		for e in environments/*/; do (cd "$$e" && tofu init -backend=false && tofu validate); done
+
+workflow-audit:       ## Audit GitHub Actions workflows for security (zizmor)
+	uvx zizmor --persona=regular .github/workflows
+
 up:                   ## Local stack (add --profile full for web)
 	docker compose up -d
 

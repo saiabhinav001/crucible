@@ -10,33 +10,44 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 8 complete (measured routing, exact cache, budgets)
+## Status: Phase 9 complete (production CI/CD, staging, load, hardening)
 
-Phases 0–7 built the platform, sandbox, durable agent, regression gate,
-observability, and the product UI. **Phase 8 reduces cost only where quality is
-measured**: every efficiency lever is declared, evidence-gated, and reversible
-with one setting.
+Phases 0–8 built the platform, sandbox, durable agent, regression gate,
+observability, product UI, and the efficiency layer. **Phase 9 makes delivery
+and operations repeatable and safe** before real users arrive — with the
+pipeline itself treated as an attack surface.
 
-- **A declared two-tier router.** Tier-1 plans cheap questions and escalates on
-  abstain/low confidence; coder runs tier-1 because execution + verification
-  catch weak programs downstream. Escalations bill the burned tier-1 call. The
-  [held-out experiment](docs/evaluation/router-experiment.md) (real sandbox, 16
-  cases) shows the routed policy at **identical accuracy (paired Δ 0.0, gate
-  PASS) for 63% less cost** — with escalation counts in the open.
-- **An exact cache that cannot lie.** Keys bind tenant + dataset content +
-  config signature + question; SQL reads are org-scoped on top; hits re-validate
-  stored identity inputs and any mismatch is a counted, quarantined *false hit*.
-  Only fully verified answers are cached — never reviewed or abstained ones.
-  Semantic caching has no flag, by design.
-- **A budget ledger, not a counter.** Admission refuses runs *before* spending
-  (audited); reserves count in-flight work; settlement replaces the reserve with
-  the actual attempt cost, idempotently under job re-delivery.
-- **Honest cost accounting.** Costs come from a declared price registry;
-  unknown prices are `None`, never zero; the offline fakes carry labeled
-  synthetic prices so the whole pipeline is exercised end to end.
-- Dashboard gains budget + cache-safety panels; Settings sets the budget;
-  Evaluations shows the policy comparison. See
-  [docs/operations/efficiency.md](docs/operations/efficiency.md).
+- **Federated, keyless deploys.** GitHub Actions reaches GCP via OIDC / Workload
+  Identity Federation — no long-lived cloud key exists. Images are built
+  reproducibly, referenced by digest, cosign-signed with an SBOM; production
+  promotion deploys the exact digest that passed staging and verifies its
+  signature first. Every third-party action is pinned to a commit SHA and the
+  workflows are `zizmor`-clean. ([ADR-009](docs/adr/ADR-009-deployment-security.md))
+- **Reproducible infrastructure.** The whole GCP stack is OpenTofu
+  (`infra/opentofu`): private Cloud SQL (HA + PITR), Memorystore, GCS, Secret
+  Manager, Cloud Run with separate API/worker identities, and the WIF pool — no
+  console-clicks.
+- **Layered security scanning, enforced on PRs.** gitleaks, pip-audit, CodeQL,
+  Semgrep (registry packs **plus** the repo's own guardrail rules), Trivy, and
+  Checkov for IaC.
+- **Reversible by design.** Expand/contract migrations run as an explicit deploy
+  step (never on startup); a rollback is a traffic shift to the prior,
+  schema-compatible revision — so a code rollback never needs a data rollback.
+- **Resilience proven, not asserted.** A load/soak harness with hard latency +
+  error-budget gates, three executable game days (provider outage, queue loss,
+  worker crash), and a non-destructive DR drill that produces
+  [committed evidence](docs/operations/disaster-recovery.md). See the
+  [deployment runbook](docs/operations/deployment-runbook.md).
+
+<details><summary>Earlier: Phase 8 — measured routing, exact cache, budgets</summary>
+
+Every efficiency lever is declared, evidence-gated, and reversible with one
+setting: a two-tier router (identical accuracy at 63% less cost on the held-out
+experiment), an exact cache that cannot cross tenant/dataset/config, and a
+budget ledger that refuses runs before spending. See
+[docs/operations/efficiency.md](docs/operations/efficiency.md).
+
+</details>
 
 <details><summary>Earlier: Phase 7 — product dashboard, review UX, and docs</summary>
 
