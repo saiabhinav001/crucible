@@ -2,7 +2,7 @@
 // credential and rendered to HTML. No API key ever reaches the browser.
 import { DataTable, Mono, Panel, StatusBadge } from "@crucible/ui";
 
-import { listDatasets, listVersions, NotConfigured } from "@/lib/api";
+import { listDatasets, listVersions, setupMessage } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
 import { UploadForm } from "./upload-form";
@@ -14,7 +14,8 @@ export default async function DatasetsPage() {
   try {
     datasets = await listDatasets();
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 

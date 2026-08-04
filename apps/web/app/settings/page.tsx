@@ -4,7 +4,7 @@
 // — the UI mirrors the API's authorization, it does not invent its own.
 import { Callout, DataTable, KeyValue, Mono, Panel, StatusBadge, Tag } from "@crucible/ui";
 
-import { getBudget, getMe, listApiKeys, NotConfigured } from "@/lib/api";
+import { getBudget, getMe, listApiKeys, setupMessage } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
 import { BudgetForm } from "./budget-form";
@@ -18,7 +18,8 @@ export default async function SettingsPage() {
     keys = await listApiKeys();
     budget = await getBudget();
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 

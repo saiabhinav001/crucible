@@ -1,7 +1,7 @@
 import { DataTable, Mono, Panel, StatusBadge } from "@crucible/ui";
 import Link from "next/link";
 
-import { listDatasets, listRuns, listVersions, NotConfigured } from "@/lib/api";
+import { listDatasets, listRuns, listVersions, setupMessage } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
 import { NewRunForm, type ReadyVersion } from "./new-run-form";
@@ -26,7 +26,8 @@ export default async function RunsPage() {
   try {
     [runs, versions] = await Promise.all([listRuns(), readyVersions()]);
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 

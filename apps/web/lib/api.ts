@@ -79,6 +79,9 @@ export type Attempt = {
 
 export class NotConfigured extends Error {}
 
+/** The API could not be reached at all (server down, wrong URL, network). */
+export class ApiUnreachable extends Error {}
+
 /** A structured API error carrying the RFC-7807 problem detail when present. */
 export class ApiError extends Error {
   status: number;
@@ -88,12 +91,19 @@ export class ApiError extends Error {
     this.status = status;
     this.type = type;
   }
+
+  /** True for authentication/authorization failures (stale/invalid key, no
+   * membership, suspended org) — recoverable by fixing the credential. */
+  get isAuth(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
 }
 
 function requireKey(): string {
   if (!API_KEY) {
     throw new NotConfigured(
-      "CRUCIBLE_API_KEY is not set. Run scripts/bootstrap_org.py to mint one, then set it in apps/web/.env.local.",
+      "CRUCIBLE_API_KEY is not set. Mint one with scripts/onboard_beta_tenant.py " +
+        "(or scripts/seed_demo.py) and set it in apps/web/.env.local.",
     );
   }
   return API_KEY;
@@ -112,9 +122,39 @@ async function fail(response: Response, path: string): Promise<never> {
   throw new ApiError(response.status, type, `API ${path} failed: ${detail}`);
 }
 
+/** Fetch that converts a transport failure (API down / wrong URL) into a typed
+ * error, so callers never see a raw "fetch failed". */
+async function request(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${API_URL}${path}`, init);
+  } catch (cause) {
+    throw new ApiUnreachable(
+      `Could not reach the API at ${API_URL}. Is it running, and is CRUCIBLE_API_URL correct?`,
+      { cause },
+    );
+  }
+}
+
+/** Classify an error thrown by the client into a friendly "setup required"
+ * message, or null if it is a genuine/unexpected failure the error boundary
+ * should surface. A missing/stale key, a suspended org, or an unreachable API
+ * are all operator-actionable states — not app crashes. */
+export function setupMessage(error: unknown): string | null {
+  if (error instanceof NotConfigured) return error.message;
+  if (error instanceof ApiUnreachable) return error.message;
+  if (error instanceof ApiError && error.isAuth) {
+    return (
+      `${error.message}. The CRUCIBLE_API_KEY in apps/web/.env.local is missing, ` +
+      "expired, or its organization was reset/suspended — mint a fresh one with " +
+      "scripts/onboard_beta_tenant.py or scripts/seed_demo.py."
+    );
+  }
+  return null;
+}
+
 async function get<T>(path: string): Promise<T> {
   const key = requireKey();
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await request(path, {
     headers: { Authorization: `Bearer ${key}` },
     cache: "no-store",
   });
@@ -124,7 +164,7 @@ async function get<T>(path: string): Promise<T> {
 
 async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   const key = requireKey();
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await request(path, {
     method,
     headers: {
       Authorization: `Bearer ${key}`,

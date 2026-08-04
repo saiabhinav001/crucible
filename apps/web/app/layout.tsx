@@ -17,7 +17,11 @@ const THEME_BOOT = `try{var t=localStorage.getItem("cru-theme");if(t==="light"||
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      {/* Browser extensions (Grammarly, password managers, …) inject attributes
+          onto <body> before React hydrates; suppressHydrationWarning stops that
+          from being reported as a mismatch. It suppresses only this element's
+          attribute diff, not its subtree. */}
+      <body suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <AppShell>{children}</AppShell>
       </body>

@@ -4,7 +4,7 @@
 import { DataTable, Mono, Panel, StatusBadge } from "@crucible/ui";
 import Link from "next/link";
 
-import { getReviewQueue, NotConfigured } from "@/lib/api";
+import { getReviewQueue, setupMessage } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
 import { ReviewActions } from "./review-actions";
@@ -16,7 +16,8 @@ export default async function ReviewsPage() {
   try {
     queue = await getReviewQueue();
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 

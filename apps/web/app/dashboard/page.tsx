@@ -18,7 +18,7 @@ import {
   getCacheStats,
   getCostLatency,
   getReliability,
-  NotConfigured,
+  setupMessage,
 } from "@/lib/api";
 
 import { SetupRequired } from "../_setup";
@@ -40,7 +40,8 @@ export default async function DashboardPage() {
       getCacheStats(),
     ]);
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 

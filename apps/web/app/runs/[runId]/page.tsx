@@ -19,7 +19,7 @@ import {
   getRunAttempts,
   getRunEvents,
   getRunTrace,
-  NotConfigured,
+  setupMessage,
   type Trace as TraceData,
 } from "@/lib/api";
 
@@ -43,7 +43,8 @@ export default async function RunDetail({ params }: { params: Promise<{ runId: s
       trace = null; // trace is best-effort; the rest of the page still renders
     }
   } catch (error) {
-    if (error instanceof NotConfigured) return <SetupRequired message={error.message} />;
+    const setup = setupMessage(error);
+    if (setup) return <SetupRequired message={setup} />;
     throw error;
   }
 
