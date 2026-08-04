@@ -28,6 +28,11 @@ from crucible.application.commands.online import (
     OnlineSampleSummary,
     RunOnlineChecks,
 )
+from crucible.application.commands.retention import (
+    DEFAULT_RETENTION_DAYS,
+    ApplyRetention,
+    RetentionOutcome,
+)
 from crucible.application.commands.reviews import (
     REVIEW_RUBRIC_VERSION,
     ClaimReview,
@@ -63,7 +68,9 @@ from crucible.application.ports import (
     MembershipRecord,
     MetricsRepository,
     ObjectStore,
+    OrganizationRecord,
     RateLimiter,
+    RetentionRepository,
     ReviewQueueItem,
     ReviewRecord,
     ReviewRepository,
@@ -98,11 +105,13 @@ from crucible.application.services.authenticate import (
 )
 
 __all__ = [
+    "DEFAULT_RETENTION_DAYS",
     "ONLINE_EVALUATOR_VERSION",
     "REVIEW_RUBRIC_VERSION",
     "RUN_COST_ESTIMATE_USD",
     "AgentAttemptRecord",
     "ApiKeyRecord",
+    "ApplyRetention",
     "AttemptReader",
     "AuditEntry",
     "AuditSink",
@@ -146,10 +155,13 @@ __all__ = [
     "MetricsRepository",
     "ObjectStore",
     "OnlineSampleSummary",
+    "OrganizationRecord",
     "RateLimiter",
     "ResolveApiKeyPrincipal",
     "ResolveRunReview",
     "ResolveUserPrincipal",
+    "RetentionOutcome",
+    "RetentionRepository",
     "ReviewQueueItem",
     "ReviewRecord",
     "ReviewRepository",

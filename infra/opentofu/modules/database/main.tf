@@ -21,6 +21,11 @@ variable "database_name" {
 }
 
 resource "google_sql_database_instance" "main" {
+  # checkov:skip=CKV_GCP_79:POSTGRES_17 is the current major version; checkov's
+  # "latest" list lags releases.
+  # checkov:skip=CKV_GCP_6:ssl_mode=ENCRYPTED_ONLY (below) is the modern
+  # equivalent of the deprecated require_ssl flag checkov still looks for.
+  # checkov:skip=CKV_GCP_109:log_min_messages is set to 'error' below.
   project             = var.project_id
   name                = "${var.name_prefix}-pg"
   region              = var.region
@@ -46,10 +51,50 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = false # no public IP
       private_network = var.network_id
+      ssl_mode        = "ENCRYPTED_ONLY" # reject non-TLS connections (CKV_GCP_6)
     }
 
+    # Security-relevant logging: connections, disconnections, checkpoints, lock
+    # waits, hostnames, statements, and pgAudit — an incident review needs them
+    # (CKV_GCP_51/52/53/54/108/109/110/111, CKV2_GCP_13).
     database_flags {
       name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_checkpoints"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_disconnections"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_lock_waits"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_hostname"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_duration"
+      value = "on"
+    }
+    database_flags {
+      name  = "log_statement"
+      value = "ddl"
+    }
+    database_flags {
+      name  = "log_min_messages"
+      value = "error"
+    }
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
       value = "on"
     }
     insights_config { query_insights_enabled = true }

@@ -36,6 +36,7 @@ from crucible.domain.health import BuildInfo, ComponentHealth, HealthState, Syst
 from crucible.domain.identity import (
     ROLE_PERMISSIONS,
     ActorType,
+    OrganizationStatus,
     Permission,
     Principal,
     Role,
@@ -85,6 +86,7 @@ __all__ = [
     "HealthState",
     "NotAuthenticated",
     "NotFound",
+    "OrganizationStatus",
     "PayloadTooLarge",
     "Permission",
     "PermissionDenied",

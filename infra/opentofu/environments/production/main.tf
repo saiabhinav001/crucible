@@ -28,6 +28,10 @@ module "wif" {
   name_prefix       = local.name_prefix
   github_repository = var.github_repository
   allowed_ref       = "refs/heads/main"
+  impersonatable_service_accounts = [
+    google_service_account.api.email,
+    google_service_account.worker.email,
+  ]
 }
 
 module "storage" {
@@ -124,6 +128,24 @@ module "api" {
     CRUCIBLE_DATABASE_URL = { secret = module.secrets.secret_ids["database-url"], version = "latest" }
     CRUCIBLE_REDIS_URL    = { secret = module.secrets.secret_ids["redis-url"], version = "latest" }
   }
+}
+
+# Public edge (Phase 10): Cloud Armor WAF + global HTTPS LB + managed TLS in
+# front of the API. Users reach the domain, never the raw Cloud Run URL.
+module "waf" {
+  source      = "../../modules/waf"
+  project_id  = var.project_id
+  name_prefix = local.name_prefix
+}
+
+module "https_lb" {
+  source             = "../../modules/https_lb"
+  project_id         = var.project_id
+  region             = var.region
+  name_prefix        = local.name_prefix
+  domain             = var.api_domain
+  cloud_run_service  = module.api.service_name
+  security_policy_id = module.waf.security_policy_id
 }
 
 module "worker" {

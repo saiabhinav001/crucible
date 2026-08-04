@@ -51,6 +51,16 @@ class UserRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class OrganizationRecord:
+    id: uuid.UUID
+    slug: str
+    name: str
+    status: str
+    retention_days: int | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class MembershipRecord:
     organization_id: uuid.UUID
     organization_slug: str
@@ -274,6 +284,21 @@ class IdentityRepository(Protocol):
     async def upsert_user(
         self, *, subject: str, email: str | None, display_name: str | None
     ) -> UserRecord: ...
+
+    async def organization_status(self, organization_id: uuid.UUID) -> str | None:
+        """The org's lifecycle status ('active'|'suspended'), or None if the
+        org does not exist. The auth boundary refuses a non-active org."""
+        ...
+
+    async def organization_retention_days(self, organization_id: uuid.UUID) -> int | None: ...
+
+    async def set_organization_status(self, *, organization_id: uuid.UUID, status: str) -> bool: ...
+
+    async def set_organization_retention(
+        self, *, organization_id: uuid.UUID, retention_days: int | None
+    ) -> bool: ...
+
+    async def list_organizations(self) -> list[OrganizationRecord]: ...
 
     async def memberships_for_user(self, user_id: uuid.UUID) -> list[MembershipRecord]: ...
 
@@ -515,6 +540,29 @@ class CacheStore(Protocol):
 
 
 # --------------------------------------------------------------- infrastructure
+
+
+class RetentionRepository(Protocol):
+    """Data-minimization (Phase 10). Retention deletes terminal runs and their
+    evidence older than a cutoff (audit events and datasets are governed
+    separately); erasure removes all of one tenant's data. Both report counts,
+    so a dry run answers "what would this delete?" before anything is deleted."""
+
+    async def count_expired_runs(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int: ...
+
+    async def delete_expired_runs(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int: ...
+
+    async def delete_expired_cache(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int: ...
+
+    async def describe_organization(self, organization_id: uuid.UUID) -> dict[str, int]: ...
+
+    async def purge_organization(self, organization_id: uuid.UUID) -> dict[str, int]: ...
 
 
 class ObjectStore(Protocol):

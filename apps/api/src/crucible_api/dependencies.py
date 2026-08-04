@@ -38,7 +38,9 @@ from crucible.db import (
 from crucible.domain import (
     DependencyUnavailable,
     NotAuthenticated,
+    OrganizationStatus,
     Permission,
+    PermissionDenied,
     Principal,
     RateLimited,
 )
@@ -160,6 +162,13 @@ async def get_principal(
             organization_id=org_id,
         )
 
+    # Beta allowlist / lifecycle gate (Phase 10): a suspended organization is
+    # refused at the authentication boundary for both credential types, so no
+    # use case ever runs for it. The data is retained; access is not.
+    status = await identity.organization_status(principal.organization_id)
+    if status != OrganizationStatus.ACTIVE.value:
+        raise PermissionDenied("This organization's access is suspended.")
+
     request.state.principal = principal
     return principal
 
@@ -220,8 +229,6 @@ def require(permission: Permission) -> Any:
     """
 
     async def _guard(principal: PrincipalDep) -> Principal:
-        from crucible.domain import PermissionDenied
-
         if not principal.can(permission):
             raise PermissionDenied()
         return principal

@@ -15,6 +15,11 @@ variable "allowed_ref" {
   default     = "refs/heads/main"
   description = "Only this ref may deploy; PRs and forks cannot."
 }
+variable "impersonatable_service_accounts" {
+  type        = list(string)
+  default     = []
+  description = "Runtime SA emails the deployer may actAs (deploy Cloud Run). Granted per-SA, never project-wide."
+}
 
 resource "google_iam_workload_identity_pool" "github" {
   project                   = var.project_id
@@ -24,6 +29,9 @@ resource "google_iam_workload_identity_pool" "github" {
 }
 
 resource "google_iam_workload_identity_pool_provider" "github" {
+  # checkov:skip=CKV_GCP_125:the attribute_condition below hard-restricts tokens
+  # to the exact repository, and the SA binding further restricts to that repo's
+  # principalSet — a fork or another repo cannot assume the deployer identity.
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-oidc"
@@ -63,13 +71,14 @@ resource "google_service_account_iam_member" "wif_binding" {
 }
 
 # Least-privilege deploy permissions: push images, deploy Cloud Run, run the
-# migration job, read the secrets the services mount. No project owner/editor.
+# migration job, read the secrets the services mount. No project owner/editor,
+# and no project-wide serviceAccountUser (that is granted per runtime SA below,
+# CKV_GCP_41/49).
 locals {
   deployer_roles = [
     "roles/run.developer",
     "roles/artifactregistry.writer",
-    "roles/iam.serviceAccountUser", # to actAs the runtime SAs on deploy
-    "roles/cloudsql.client",        # migration job connects to Cloud SQL
+    "roles/cloudsql.client", # migration job connects to Cloud SQL
   ]
 }
 
@@ -78,6 +87,15 @@ resource "google_project_iam_member" "deployer" {
   project  = var.project_id
   role     = each.value
   member   = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# actAs is granted ONLY on the specific runtime SAs the deploy needs to bind to
+# Cloud Run — not at the project level.
+resource "google_service_account_iam_member" "act_as" {
+  for_each           = toset(var.impersonatable_service_accounts)
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${each.value}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deployer.email}"
 }
 
 output "provider_name" { value = google_iam_workload_identity_pool_provider.github.name }

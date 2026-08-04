@@ -75,6 +75,10 @@ class Organization(Base):
     id: Mapped[uuid.UUID] = _pk()
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Phase 10: beta allowlist gate ('active'|'suspended') + optional per-tenant
+    # retention override (NULL = platform default).
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
+    retention_days: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created_at()
 
 

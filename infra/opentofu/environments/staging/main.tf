@@ -27,6 +27,10 @@ module "wif" {
   name_prefix       = local.name_prefix
   github_repository = var.github_repository
   allowed_ref       = "refs/heads/main"
+  impersonatable_service_accounts = [
+    google_service_account.api.email,
+    google_service_account.worker.email,
+  ]
 }
 
 module "storage" {
@@ -37,9 +41,9 @@ module "storage" {
 }
 
 module "secrets" {
-  source           = "../../modules/secrets"
-  project_id       = var.project_id
-  name_prefix      = local.name_prefix
+  source      = "../../modules/secrets"
+  project_id  = var.project_id
+  name_prefix = local.name_prefix
   accessor_members = [
     "serviceAccount:${google_service_account.api.email}",
     "serviceAccount:${google_service_account.worker.email}",

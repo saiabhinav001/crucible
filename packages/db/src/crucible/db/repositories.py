@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from crucible.application.ports import (
@@ -24,6 +24,7 @@ from crucible.application.ports import (
     DatasetRecord,
     DatasetVersionRecord,
     MembershipRecord,
+    OrganizationRecord,
     ReviewQueueItem,
     ReviewRecord,
     RunEventRecord,
@@ -73,6 +74,48 @@ class SqlIdentityRepository:
         return UserRecord(
             id=row.id, subject=row.subject, email=row.email, display_name=row.display_name
         )
+
+    async def organization_status(self, organization_id: uuid.UUID) -> str | None:
+        row = await self._s.get(m.Organization, organization_id)
+        return None if row is None else row.status
+
+    async def organization_retention_days(self, organization_id: uuid.UUID) -> int | None:
+        row = await self._s.get(m.Organization, organization_id)
+        return None if row is None else row.retention_days
+
+    async def set_organization_status(self, *, organization_id: uuid.UUID, status: str) -> bool:
+        row = await self._s.get(m.Organization, organization_id)
+        if row is None:
+            return False
+        row.status = status
+        await self._s.flush()
+        return True
+
+    async def set_organization_retention(
+        self, *, organization_id: uuid.UUID, retention_days: int | None
+    ) -> bool:
+        row = await self._s.get(m.Organization, organization_id)
+        if row is None:
+            return False
+        row.retention_days = retention_days
+        await self._s.flush()
+        return True
+
+    async def list_organizations(self) -> list[OrganizationRecord]:
+        rows = (
+            await self._s.execute(select(m.Organization).order_by(m.Organization.created_at))
+        ).scalars()
+        return [
+            OrganizationRecord(
+                id=o.id,
+                slug=o.slug,
+                name=o.name,
+                status=o.status,
+                retention_days=o.retention_days,
+                created_at=o.created_at,
+            )
+            for o in rows
+        ]
 
     async def memberships_for_user(self, user_id: uuid.UUID) -> list[MembershipRecord]:
         stmt = (
@@ -1140,6 +1183,137 @@ class SqlCacheStore:
                 m.AnswerCacheEntry.cache_key == cache_key,
             )
         )
+
+
+class SqlRetentionRepository:
+    """Data-minimization + erasure (Phase 10).
+
+    Runs carry evidence in five child tables (RESTRICT FKs, so children go
+    first) plus `scores` rows keyed by `target_id`. Deletion happens inside one
+    transaction the caller commits, so a partial delete is impossible.
+    """
+
+    # FK-safe order: children of agent_runs before the runs themselves.
+    _RUN_CHILD_DELETES = (
+        "DELETE FROM scores WHERE target_type = 'run' AND target_id = ANY(:ids)",
+        "DELETE FROM budget_entries WHERE run_id = ANY(:rids)",
+        "DELETE FROM human_reviews WHERE run_id = ANY(:rids)",
+        "DELETE FROM agent_attempts WHERE run_id = ANY(:rids)",
+        "DELETE FROM agent_checkpoints WHERE run_id = ANY(:rids)",
+        "DELETE FROM run_events WHERE run_id = ANY(:rids)",
+    )
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def _expired_run_ids(
+        self, cutoff: datetime, organization_id: uuid.UUID | None
+    ) -> list[uuid.UUID]:
+        # Only terminal runs are eligible; an in-flight run is never reaped.
+        stmt = select(m.AgentRun.id).where(
+            m.AgentRun.created_at < cutoff,
+            m.AgentRun.status.in_([s.value for s in TERMINAL_RUN_STATES]),
+        )
+        if organization_id is not None:
+            stmt = stmt.where(m.AgentRun.organization_id == organization_id)
+        return list((await self._s.execute(stmt)).scalars())
+
+    async def count_expired_runs(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int:
+        return len(await self._expired_run_ids(cutoff, organization_id))
+
+    async def _delete_runs(self, run_ids: list[uuid.UUID]) -> int:
+        if not run_ids:
+            return 0
+        str_ids = [str(r) for r in run_ids]
+        await self._s.execute(text(self._RUN_CHILD_DELETES[0]), {"ids": str_ids})
+        for stmt in self._RUN_CHILD_DELETES[1:]:
+            await self._s.execute(text(stmt), {"rids": run_ids})
+        await self._s.execute(
+            text("DELETE FROM agent_runs WHERE id = ANY(:rids)"), {"rids": run_ids}
+        )
+        await self._s.flush()
+        return len(run_ids)  # every selected run is deleted
+
+    async def delete_expired_runs(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int:
+        run_ids = await self._expired_run_ids(cutoff, organization_id)
+        return await self._delete_runs(run_ids)
+
+    async def delete_expired_cache(
+        self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
+    ) -> int:
+        where = "created_at < :cutoff"
+        params: dict[str, Any] = {"cutoff": cutoff}
+        if organization_id is not None:
+            where += " AND organization_id = :org"
+            params["org"] = organization_id
+        n = int(
+            (
+                await self._s.execute(
+                    text(f"SELECT count(*) FROM answer_cache WHERE {where}"), params
+                )
+            ).scalar_one()
+        )
+        await self._s.execute(text(f"DELETE FROM answer_cache WHERE {where}"), params)
+        await self._s.flush()
+        return n
+
+    async def describe_organization(self, organization_id: uuid.UUID) -> dict[str, int]:
+        """Counts of a tenant's data — the dry-run answer for an erasure request."""
+        tables = [
+            ("runs", "agent_runs"),
+            ("datasets", "datasets"),
+            ("dataset_versions", "dataset_versions"),
+            ("api_keys", "api_keys"),
+            ("memberships", "memberships"),
+            ("scores", "scores"),
+            ("answer_cache", "answer_cache"),
+            ("budget_entries", "budget_entries"),
+            ("audit_events", "audit_events"),
+        ]
+        counts: dict[str, int] = {}
+        for label, table in tables:
+            n = (
+                await self._s.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE organization_id = :org"),
+                    {"org": organization_id},
+                )
+            ).scalar_one()
+            counts[label] = int(n)
+        return counts
+
+    async def purge_organization(self, organization_id: uuid.UUID) -> dict[str, int]:
+        """Right-to-erasure: delete ALL of one tenant's data, then the org.
+        Users are global (subject-based) and are left intact; the audit trail
+        for this org is included in the erasure."""
+        before = await self.describe_organization(organization_id)
+        run_ids = list(
+            (
+                await self._s.execute(
+                    select(m.AgentRun.id).where(m.AgentRun.organization_id == organization_id)
+                )
+            ).scalars()
+        )
+        await self._delete_runs(run_ids)
+        # Remaining tenant-owned rows, FK-safe: versions before datasets.
+        for stmt in (
+            "DELETE FROM answer_cache WHERE organization_id = :org",
+            "DELETE FROM budget_entries WHERE organization_id = :org",
+            "DELETE FROM budgets WHERE organization_id = :org",
+            "DELETE FROM scores WHERE organization_id = :org",
+            "DELETE FROM dataset_versions WHERE organization_id = :org",
+            "DELETE FROM datasets WHERE organization_id = :org",
+            "DELETE FROM api_keys WHERE organization_id = :org",
+            "DELETE FROM memberships WHERE organization_id = :org",
+            "DELETE FROM audit_events WHERE organization_id = :org",
+            "DELETE FROM organizations WHERE id = :org",
+        ):
+            await self._s.execute(text(stmt), {"org": organization_id})
+        await self._s.flush()
+        return before
 
 
 class SqlAuditSink:

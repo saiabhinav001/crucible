@@ -6,6 +6,8 @@ variable "region" { type = string }
 variable "name_prefix" { type = string }
 
 resource "google_artifact_registry_repository" "images" {
+  # checkov:skip=CKV_GCP_84:images are encrypted with Google-managed keys; CMEK
+  # is adopted only where the threat model requires it (ADR-007).
   project       = var.project_id
   location      = var.region
   repository_id = "${var.name_prefix}-images"

@@ -9,6 +9,7 @@ real staging URL (over the network) or the ASGI app in-process (the CI smoke).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import time
 from collections.abc import Awaitable, Callable
@@ -109,10 +110,8 @@ async def _warmup(client: httpx.AsyncClient, scenarios: list[Scenario], rounds: 
     rather than one-time connection setup."""
     for _ in range(rounds):
         for scenario in scenarios:
-            try:
+            with contextlib.suppress(Exception):
                 await scenario.call(client)
-            except Exception:
-                pass
 
 
 async def run_load(

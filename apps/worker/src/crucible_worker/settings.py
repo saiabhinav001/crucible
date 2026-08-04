@@ -97,3 +97,9 @@ class WorkerAppSettings(BaseSettings):
     )
 
     execution_wall_seconds: float = 20.0
+
+    # Platform data-retention window (Phase 10): terminal runs and their
+    # evidence older than this are deleted by the daily retention job. A tenant
+    # may override it via organizations.retention_days. Audit events and
+    # datasets are out of scope.
+    retention_days: int = 90

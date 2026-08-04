@@ -10,34 +10,42 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 9 complete (production CI/CD, staging, load, hardening)
+## Status: Phase 10 complete (private beta deployment & reliability operations)
 
-Phases 0–8 built the platform, sandbox, durable agent, regression gate,
-observability, product UI, and the efficiency layer. **Phase 9 makes delivery
-and operations repeatable and safe** before real users arrive — with the
-pipeline itself treated as an attack surface.
+Phases 0–9 built the platform, sandbox, durable agent, regression gate,
+observability, product UI, the efficiency layer, and the production CI/CD +
+hardening. **Phase 10 makes it operable for a real, bounded audience** —
+allowlisted access, data minimization, a public edge, and the operator tooling
+to run a beta responsibly.
 
-- **Federated, keyless deploys.** GitHub Actions reaches GCP via OIDC / Workload
-  Identity Federation — no long-lived cloud key exists. Images are built
-  reproducibly, referenced by digest, cosign-signed with an SBOM; production
-  promotion deploys the exact digest that passed staging and verifies its
-  signature first. Every third-party action is pinned to a commit SHA and the
-  workflows are `zizmor`-clean. ([ADR-009](docs/adr/ADR-009-deployment-security.md))
-- **Reproducible infrastructure.** The whole GCP stack is OpenTofu
-  (`infra/opentofu`): private Cloud SQL (HA + PITR), Memorystore, GCS, Secret
-  Manager, Cloud Run with separate API/worker identities, and the WIF pool — no
-  console-clicks.
-- **Layered security scanning, enforced on PRs.** gitleaks, pip-audit, CodeQL,
-  Semgrep (registry packs **plus** the repo's own guardrail rules), Trivy, and
-  Checkov for IaC.
-- **Reversible by design.** Expand/contract migrations run as an explicit deploy
-  step (never on startup); a rollback is a traffic shift to the prior,
-  schema-compatible revision — so a code rollback never needs a data rollback.
-- **Resilience proven, not asserted.** A load/soak harness with hard latency +
-  error-budget gates, three executable game days (provider outage, queue loss,
-  worker crash), and a non-destructive DR drill that produces
-  [committed evidence](docs/operations/disaster-recovery.md). See the
-  [deployment runbook](docs/operations/deployment-runbook.md).
+- **Beta allowlist.** Access is per-organization: a `suspended` org is refused at
+  the authentication boundary (API keys and OIDC alike). No self-service signup;
+  `scripts/onboard_beta_tenant.py` brings a named cohort member on with an owner
+  key and a budget in one command.
+- **Data minimization, executed.** A daily job deletes terminal runs and their
+  evidence past a retention window (per-tenant override); non-terminal runs are
+  never reaped; audit and datasets are scoped out. Right-to-erasure
+  (`purge-org`) removes a tenant's data and the org, dry-run first.
+- **A public edge.** Cloud Armor WAF (rate limiting + OWASP + Log4Shell) and a
+  global HTTPS load balancer with managed TLS front the API. The whole IaC now
+  passes `tofu validate` and Checkov with **zero failures**.
+- **Operator surface.** An admin CLI (suspend/activate, budgets, retention,
+  erasure), a synthetic production canary, and a weekly reliability + evaluation
+  review that keeps "it seemed fine" from being mistaken for measured quality.
+- **Beta discipline, documented.** Onboarding, support, incident-response, and
+  on-call runbooks; a retention policy; and draft terms + data-processing notice.
+  See [beta onboarding](docs/operations/beta-onboarding.md).
+
+<details><summary>Earlier: Phase 9 — production CI/CD, staging, load & hardening</summary>
+
+Federated (OIDC/WIF) keyless deploys; digest-pinned, cosign-signed images with
+SBOM; staging deploy + production promotion + rollback; OpenTofu GCP reference
+IaC; layered security scanning; load/soak harness; provider-outage, queue-loss,
+and crash-recovery game days; a non-destructive DR drill with committed
+evidence. ([ADR-009](docs/adr/ADR-009-deployment-security.md),
+[deployment runbook](docs/operations/deployment-runbook.md))
+
+</details>
 
 <details><summary>Earlier: Phase 8 — measured routing, exact cache, budgets</summary>
 

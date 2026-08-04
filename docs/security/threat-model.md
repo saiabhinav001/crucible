@@ -141,7 +141,28 @@ workflow or a long-lived cloud key is a path straight to production. Detail in
 | Unsafe migration rollback | Expand/contract discipline (semgrep forbids app-startup migrations); a code rollback is a traffic shift to the prior revision, always schema-compatible; DR is a data restore, never a schema downgrade. | [migration-runbook.md](../operations/migration-runbook.md), [rollback-runbook.md](../operations/rollback-runbook.md) |
 | Deploy without a proven recovery path | A non-destructive DR drill (`scripts/dr_drill.sh`) plants a marker, backs up, restores into a scratch DB, and verifies — with committed evidence. Resilience game days (provider outage, queue loss, worker crash) run as gated tests. | `docs/operations/evidence/dr-drill-*.md`; `tests/integration/test_resilience_gameday.py` (3 drills) |
 
+### Phase 10 — private beta, retention & the public edge (2026-07-21)
+
+The private beta adds three surfaces: who may access at all (the allowlist), how
+long data lives (retention/erasure), and the public internet edge. Detail in
+[retention-policy.md](../operations/retention-policy.md) and
+[data-processing-notice.md](../legal/data-processing-notice.md).
+
+| Threat | Control now in place | Evidence |
+|---|---|---|
+| Unapproved access during beta | Access is an allowlist: only `active` organizations authenticate. A `suspended` org is refused at the authentication boundary for BOTH API keys and OIDC, on every endpoint — data retained, access denied. | `get_principal` status gate; `test_suspended_organization_is_refused_at_auth` |
+| Data hoarding / minimization failure (T8-adjacent) | A daily retention job deletes terminal runs and their evidence past a window (per-tenant override); non-terminal runs are never reaped; audit and datasets are scoped out deliberately. | `crucible_worker.jobs.retention`; `test_retention_deletes_old_terminal_runs_and_keeps_recent`, `test_retention_never_reaps_a_non_terminal_run` |
+| Erasure request mishandled | `purge-org` deletes all of one tenant's data + the org in one transaction, dry-run first; the org's key then fails to authenticate; other tenants untouched. | `scripts/admin.py purge-org`; `test_purge_organization_removes_all_tenant_data` |
+| Public-edge attacks (T6) | Cloud Armor WAF: per-IP rate limiting, OWASP SQLi/XSS/LFI, Log4Shell; global HTTPS LB with managed TLS and HTTP→HTTPS redirect in front of the API. | `infra/opentofu/modules/waf`, `modules/https_lb`; Checkov 0 failed |
+| Beta usage mistaken for correctness | Quality is the evaluation gate, not anecdote: the support/feedback loop routes quality complaints into eval cases; the weekly review reconciles telemetry with the gate. | [support-runbook.md](../operations/support-runbook.md); `scripts/weekly_review.py` |
+| Sensitive real data in traces (privacy) | The redaction boundary (T8) and per-tenant scoping already ensure traces carry only a pseudonym, hashes, and bounded excerpts; the data-processing notice documents the boundary and the incident-notification duty. | [data-processing-notice.md](../legal/data-processing-notice.md); T8 controls (Phase 6) |
+
+Cloud SQL hardening this phase (TLS-only, audit logging, pgAudit) and the
+per-runtime-SA `serviceAccountUser` grant close the remaining IaC findings; the
+OpenTofu passes `tofu validate` and Checkov with zero failures.
+
 ## 6. Review cadence
 
 Threat model reviewed at each phase exit that adds a boundary (P2 data plane, P3
-sandbox, P6 telemetry, P9 CI/CD hardening) and after any security incident.
+sandbox, P6 telemetry, P9 CI/CD hardening, P10 beta/edge) and after any security
+incident.

@@ -18,3 +18,8 @@ variable "db_app_user_password" {
   type      = string
   sensitive = true
 }
+
+variable "api_domain" {
+  type        = string
+  description = "Public API hostname; a Google-managed TLS cert is issued for it."
+}

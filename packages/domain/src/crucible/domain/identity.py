@@ -12,6 +12,16 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 
+class OrganizationStatus(StrEnum):
+    """Tenant lifecycle (Phase 10). During the private beta, access is an
+    allowlist: only `ACTIVE` organizations authenticate. `SUSPENDED` is a
+    reversible block (billing, abuse, or off-boarding) — the data is retained,
+    but every request is refused at the authentication boundary."""
+
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+
 class Role(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"

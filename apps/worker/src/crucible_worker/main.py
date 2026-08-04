@@ -25,6 +25,7 @@ from crucible_worker.agent_runtime import SqlAnswerCache, build_limits, build_mo
 from crucible_worker.executor import build_executor
 from crucible_worker.jobs.datasets import profile_dataset_version
 from crucible_worker.jobs.online import run_online_checks
+from crucible_worker.jobs.retention import apply_retention
 from crucible_worker.jobs.runs import execute_run, resolve_run_review
 from crucible_worker.jobs.sandbox import sandbox_selfcheck
 from crucible_worker.settings import WorkerAppSettings
@@ -59,6 +60,7 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     ctx["limits"] = build_limits(_settings)
     # Phase 8 efficiency features, both opt-in; absent cache = node pass-through.
     ctx["cache"] = SqlAnswerCache(ctx["session_factory"]) if _settings.exact_cache_enabled else None
+    ctx["retention_days"] = _settings.retention_days
     logger.info(
         "crucible worker started profile=%s git_sha=%s concurrency=%s executor=%s model=%s "
         "router=%s exact_cache=%s",
@@ -88,12 +90,13 @@ class WorkerSettings:
         resolve_run_review,
         sandbox_selfcheck,
         run_online_checks,
+        apply_retention,
     ]
-    # Online deterministic evaluation runs on a fixed cadence (hourly), sampling
-    # terminal runs per tenant. `run_once` guards against multiple workers firing
-    # the same tick.
+    # Scheduled jobs: online deterministic evaluation hourly; data retention
+    # daily (off-peak). `run_at_startup=False` so a deploy does not fire them.
     cron_jobs: ClassVar[list[Any]] = [
         cron(run_online_checks, minute=0, run_at_startup=False),
+        cron(apply_retention, hour=4, minute=30, run_at_startup=False),
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown
