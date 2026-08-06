@@ -33,6 +33,16 @@ laptop; there are no long-lived cloud keys. This runbook is the human view of
    `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`, `TF_STATE_BUCKET`, `STAGING_API_URL`,
    `DB_APP_USER_PASSWORD`, …).
 
+## Deploy gating (until GCP is provisioned)
+
+The `deploy` job is guarded by `if: ${{ vars.GCP_WIF_PROVIDER != '' }}`. Until the
+one-time bootstrap above is done and that repository/environment **variable** is
+set, the job is **skipped** — the `deploy-staging` workflow run succeeds without
+attempting to authenticate, so pushes to `main` stay green while `pr-validate`
+and `security` continue to enforce every code and security gate. Setting
+`GCP_WIF_PROVIDER` (with the other `vars`/`secrets` listed above) is what turns
+staging deploys on; nothing else changes.
+
 ## Staging deploy (automatic on merge to `main`)
 
 `deploy-staging.yml` runs on push to `main` (or manual dispatch):

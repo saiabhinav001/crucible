@@ -97,6 +97,14 @@ class DockerExecutor:
         in_dir, out_dir = work / "in", work / "out"
         in_dir.mkdir(parents=True, exist_ok=True)
         out_dir.mkdir(parents=True, exist_ok=True)
+        # The container runs as a fixed non-root UID (10001) that maps to no host
+        # user; on a native-Linux host the bind-mounted results dir would be owned
+        # by the host user and unwritable by 10001, so the harness could not write
+        # its manifest. Make this ephemeral per-run scratch dir writable. It is not
+        # a containment control (it is deleted in `finally`); every real control —
+        # non-root, read-only root, no network, dropped caps, resource limits —
+        # is enforced on the container in `_container_config`.
+        out_dir.chmod(0o777)
 
         dataset_name = request.dataset.safe_name
         (in_dir / "program.py").write_text(request.program.source, encoding="utf-8")

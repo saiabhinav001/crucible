@@ -1245,19 +1245,23 @@ class SqlRetentionRepository:
     async def delete_expired_cache(
         self, *, cutoff: datetime, organization_id: uuid.UUID | None = None
     ) -> int:
-        where = "created_at < :cutoff"
+        # Static SQL with bound parameters (no string interpolation). The two
+        # shapes differ only by an optional tenant filter.
         params: dict[str, Any] = {"cutoff": cutoff}
         if organization_id is not None:
-            where += " AND organization_id = :org"
             params["org"] = organization_id
-        n = int(
-            (
-                await self._s.execute(
-                    text(f"SELECT count(*) FROM answer_cache WHERE {where}"), params
-                )
-            ).scalar_one()
-        )
-        await self._s.execute(text(f"DELETE FROM answer_cache WHERE {where}"), params)
+            count_sql = text(
+                "SELECT count(*) FROM answer_cache "
+                "WHERE created_at < :cutoff AND organization_id = :org"
+            )
+            delete_sql = text(
+                "DELETE FROM answer_cache WHERE created_at < :cutoff AND organization_id = :org"
+            )
+        else:
+            count_sql = text("SELECT count(*) FROM answer_cache WHERE created_at < :cutoff")
+            delete_sql = text("DELETE FROM answer_cache WHERE created_at < :cutoff")
+        n = int((await self._s.execute(count_sql, params)).scalar_one())
+        await self._s.execute(delete_sql, params)
         await self._s.flush()
         return n
 
@@ -1276,12 +1280,12 @@ class SqlRetentionRepository:
         ]
         counts: dict[str, int] = {}
         for label, table in tables:
-            n = (
-                await self._s.execute(
-                    text(f"SELECT count(*) FROM {table} WHERE organization_id = :org"),
-                    {"org": organization_id},
-                )
-            ).scalar_one()
+            # `table` is a SQL identifier, which cannot be a bound parameter, and
+            # it comes only from the hardcoded allowlist above — never from user
+            # input. The org filter IS bound. Safe by construction.
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            query = text(f"SELECT count(*) FROM {table} WHERE organization_id = :org")
+            n = (await self._s.execute(query, {"org": organization_id})).scalar_one()
             counts[label] = int(n)
         return counts
 

@@ -75,7 +75,22 @@ def create_app(
 
         redis_client = aioredis.from_url(cfg.redis_url)  # type: ignore[no-untyped-call]
         app.state.rate_limiter = RedisRateLimiter(redis_client)
-        queue_pool = await create_pool(RedisSettings.from_dsn(cfg.redis_url))
+        # arq's create_pool connects eagerly. As with object storage above, a
+        # missing queue must not stop the process from booting in local/test:
+        # /readyz probes Redis and requests that need the queue fail with 503.
+        # Production (any other profile) still fails fast if the queue is down.
+        queue_pool = None
+        redis_settings = RedisSettings.from_dsn(cfg.redis_url)
+        if cfg.profile in ("local", "test"):
+            # Fail fast rather than burning the default 5x1s retry budget when the
+            # queue is intentionally absent (e.g. the unit-test lane has no Redis).
+            redis_settings.conn_retries = 1
+        try:
+            queue_pool = await create_pool(redis_settings)
+        except Exception:
+            if cfg.profile not in ("local", "test"):
+                raise
+            logger.warning("job queue (redis) not reachable at startup", exc_info=True)
         app.state.queue_pool = queue_pool
 
         storage = S3ObjectStorage(
@@ -115,7 +130,8 @@ def create_app(
         try:
             yield
         finally:
-            await queue_pool.aclose()
+            if queue_pool is not None:
+                await queue_pool.aclose()
             await redis_client.aclose()
             await engine.dispose()
 

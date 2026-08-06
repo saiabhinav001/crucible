@@ -28,6 +28,16 @@ permissions:
 
 jobs:
   deploy:
+    # Gated on configuration: until a GCP project + Workload Identity Federation
+    # are provisioned and the `GCP_WIF_PROVIDER` repository/environment variable
+    # is set, this job is SKIPPED (not failed), so pushes stay green while PR
+    # validation and the security lane still run. Enabling staging deploys
+    # requires setting these repository *variables* — GCP_WIF_PROVIDER,
+    # GCP_PROJECT_ID, GCP_PROJECT_NUMBER, GCP_REGION, GCP_DEPLOYER_SA,
+    # TF_STATE_BUCKET, STAGING_API_URL — plus the DB_APP_USER_PASSWORD secret and
+    # the `staging` environment's protection rules. See
+    # docs/operations/deployment-runbook.md.
+    if: ${{ vars.GCP_WIF_PROVIDER != '' }}
     runs-on: ubuntu-latest
     environment: staging # GitHub environment protection: reviewers + secrets scope
     permissions:
