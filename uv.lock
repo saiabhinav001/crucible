@@ -458,7 +458,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14,<2" },
     { name = "crucible-application", editable = "packages/application" },
     { name = "crucible-domain", editable = "packages/domain" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4,<4" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
 ]
 
