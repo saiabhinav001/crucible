@@ -10,13 +10,27 @@ Crucible's differentiator is not the agent loop — it is the evidence around th
 executable offline evaluation, versioned experiment comparisons, production tracing,
 constrained execution, regression gates, and a stable failure taxonomy.
 
-## Status: Phase 10 complete (private beta deployment & reliability operations)
+## Status: v1.0.0
 
-Phases 0–9 built the platform, sandbox, durable agent, regression gate,
-observability, product UI, the efficiency layer, and the production CI/CD +
-hardening. **Phase 10 makes it operable for a real, bounded audience** —
-allowlisted access, data minimization, a public edge, and the operator tooling
-to run a beta responsibly.
+Crucible **v1.0.0** is the first tagged release. Phases 0–10 of the
+implementation plan are complete, and this release packages them honestly:
+measured claims only, fully synthetic fixtures, and a reproducible local demo.
+The evidence behind every claim below lives in the
+**[v1.0.0 release report](docs/release/v1.0.0.md)** and the
+**[CHANGELOG](CHANGELOG.md)**.
+
+**What v1 is:** a multi-tenant, API-first platform that evaluates and operates
+*one* bounded workload — a data-analysis agent answering questions over uploaded
+CSV/Parquet datasets with constrained Python execution. The differentiator is
+the evidence around the loop (deterministic evaluation, regression gates,
+tracing, sandboxing, provenance, failure taxonomy), not the loop itself.
+
+**What v1 is *not*:** see [Non-goals & limitations](#non-goals--limitations) —
+several capabilities are deliberately out of scope, and some parts are a
+reference/adapter contract rather than a hosted service. It is not represented
+as a certified or production-hardened multi-customer SaaS.
+
+<details><summary><b>v1.0.0 highlights — Phase 10: private beta ops &amp; reliability</b></summary>
 
 - **Beta allowlist.** Access is per-organization: a `suspended` org is refused at
   the authentication boundary (API keys and OIDC alike). No self-service signup;
@@ -27,7 +41,7 @@ to run a beta responsibly.
   never reaped; audit and datasets are scoped out. Right-to-erasure
   (`purge-org`) removes a tenant's data and the org, dry-run first.
 - **A public edge.** Cloud Armor WAF (rate limiting + OWASP + Log4Shell) and a
-  global HTTPS load balancer with managed TLS front the API. The whole IaC now
+  global HTTPS load balancer with managed TLS front the API. The whole IaC
   passes `tofu validate` and Checkov with **zero failures**.
 - **Operator surface.** An admin CLI (suspend/activate, budgets, retention,
   erasure), a synthetic production canary, and a weekly reliability + evaluation
@@ -35,6 +49,8 @@ to run a beta responsibly.
 - **Beta discipline, documented.** Onboarding, support, incident-response, and
   on-call runbooks; a retention policy; and draft terms + data-processing notice.
   See [beta onboarding](docs/operations/beta-onboarding.md).
+
+</details>
 
 <details><summary>Earlier: Phase 9 — production CI/CD, staging, load & hardening</summary>
 
@@ -56,6 +72,59 @@ budget ledger that refuses runs before spending. See
 [docs/operations/efficiency.md](docs/operations/efficiency.md).
 
 </details>
+
+## Quickstart (local, synthetic data only)
+
+Prerequisites: Docker, [`uv`](https://docs.astral.sh/uv/), Node 20+ with
+[`pnpm`](https://pnpm.io/). A fresh clone to a running demo:
+
+```bash
+git clone https://github.com/saiabhinav001/crucible.git && cd crucible
+uv sync --dev                                              # Python 3.12 workspace
+pnpm install                                               # web workspace
+docker compose up -d postgres redis minio                  # local infra
+uv run alembic -c packages/db/alembic.ini upgrade head     # schema
+make sandbox-image                                         # build the hardened runner
+uv run python scripts/seed_demo.py --slug demo             # synthetic org + runs; prints an API key
+uv run uvicorn --factory crucible_api.main:create_app --port 8100   # API
+```
+
+Then point the web app at it and open the dashboard:
+
+```bash
+printf 'CRUCIBLE_API_URL=http://localhost:8100\nCRUCIBLE_API_KEY=<key from seed_demo>\n' > apps/web/.env.local
+pnpm --filter web dev            # http://localhost:3100
+```
+
+> On Windows, run the API in Docker (`docker compose up -d api`) — a bare
+> `uvicorn` there hits a known async-Postgres event-loop quirk. Everything else
+> is cross-platform. Full guide: [docs/operations/local-development.md](docs/operations/local-development.md).
+
+**The demo story** — `upload → run → evidence → compare → review`: upload a
+synthetic CSV, ask a question, watch the agent plan → generate code → execute it
+in the sandbox → verify → answer *with provenance* (or abstain truthfully);
+open the run to see the redacted trace and config manifest; compare a candidate
+config against the frozen baseline; and claim/grade a review. See the
+[product tour](docs/operations/product-tour.md).
+
+**Reproduce the evaluation evidence** — no cloud model or API key required (the
+default `fake` backend runs real generated code in the sandbox):
+
+```bash
+make sandbox-image
+make eval-run                    # scores the core suite vs the frozen baseline and applies the gate
+```
+
+The committed example reports are in
+[`evals/reports/examples/`](evals/reports/examples/) — the exact CI-gated bytes.
+
+## Verify it yourself (the gates)
+
+```bash
+make check                       # ruff · mypy (strict) · import-linter · unit + integration tests
+uv run pytest -m sandbox         # agent computes real answers in the hardened sandbox
+make eval-run                    # regression gate: candidate vs frozen baseline, paired bootstrap CI
+```
 
 <details><summary>Earlier: Phase 7 — product dashboard, review UX, and docs</summary>
 
@@ -237,6 +306,39 @@ discounts, an unknown region, tie-margin checks, and an unanswerable question wh
 correct outcome is abstention. High-value cases carry an independently written second
 calculation. Every case pins the fixture's SHA-256 and its canonicalization contract.
 
+## Non-goals & limitations
+
+v1 is scoped on purpose. The following are **explicitly out of scope**, and
+saying so is part of the design — not an omission:
+
+- **No generic/autonomous agent.** One bounded workload (tabular data analysis).
+  No web browsing, email, SaaS connectors, or acting on a user's behalf.
+- **No arbitrary execution.** Generated code cannot install packages, open the
+  network, choose its image/mounts, or get a shell. GPU execution and
+  user-provided container images are out of scope.
+- **No multi-agent delegation** or cross-user/long-term conversational memory.
+- **No compliance certification.** Crucible adopts useful controls and evidences
+  them, but makes **no** SOC 2 / HIPAA / GDPR *certification* claim (see
+  [SECURITY.md](SECURITY.md)).
+- **No universal agent benchmark.** One rigorous reference workload plus a
+  generic harness seam; broader workload adapters are post-v1.
+
+Honest limitations of *this* release:
+
+- The **production microVM sandbox** and **GCP deployment** are a provider
+  adapter + reviewed OpenTofu reference (validated with `tofu validate` /
+  Checkov), not a live hosted service. Local execution uses the hardened
+  **Docker** runner; production isolation requires wiring a microVM provider.
+- The default model backend is a deterministic **`fake`** (it runs *real*
+  generated code in the sandbox, so answers are genuinely computed). A real
+  model requires configuring the OpenAI-compatible gateway; its quality is not
+  claimed without eval evidence.
+- Numbers quoted anywhere (e.g. the routing cost delta) are from the committed
+  **synthetic** eval reports on a small suite, with their sample size and date —
+  they are illustrative of the method, not production benchmarks.
+
+Roadmap (clearly *not* shipped in v1): [docs/product/backlog.md](docs/product/backlog.md).
+
 ## Non-negotiable principles
 
 1. Correctness is not a vibe — executable ground truth first.
@@ -246,7 +348,24 @@ calculation. Every case pins the fixture's SHA-256 and its canonicalization cont
 5. Version every behavior-changing input.
 6. Do not overbuild before the scorecard works.
 
+## Documentation index
+
+| Area | Start here |
+|---|---|
+| Release evidence | [v1.0.0 release report](docs/release/v1.0.0.md) · [CHANGELOG](CHANGELOG.md) |
+| Architecture | [C4 context + planes](docs/architecture/c4-context.md) · [web frontend](docs/architecture/web-frontend.md) · [ADRs](docs/adr/) |
+| Evaluation | [metric contract](docs/evaluation/metric-contract.md) · [failure taxonomy](docs/evaluation/failure-taxonomy.md) · [seed suite](evals/README.md) |
+| Security | [SECURITY.md](SECURITY.md) · [threat model](docs/security/threat-model.md) · [sandbox](docs/security/sandbox.md) |
+| Operations | [local dev](docs/operations/local-development.md) · [API guide](docs/operations/api-guide.md) · [deployment](docs/operations/deployment-runbook.md) · [runbooks](docs/operations/) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [maintenance cadence](docs/operations/maintenance-cadence.md) |
+| Product | [PRD](docs/product/prd.md) · [roadmap/backlog](docs/product/backlog.md) · [risk register](docs/product/risk-register.md) |
+
 ## License & security
 
-License and `SECURITY.md` land in Phase 1 with the repository foundation. All fixture
-data is synthetic; no real persons, prices, or transactions.
+Licensed under the **Apache License 2.0** — see [LICENSE](LICENSE) and
+[NOTICE](NOTICE). Contributions are accepted under the same license (Apache-2.0
+§5); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Report vulnerabilities privately per [SECURITY.md](SECURITY.md) — never in a
+public issue. All fixture and demo data in this repository is **synthetic**; no
+real persons, prices, or transactions.

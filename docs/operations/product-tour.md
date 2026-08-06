@@ -1,7 +1,7 @@
 # Product tour (Phase 7)
 
 Status: Phase 7 · Related: [web-frontend.md](../architecture/web-frontend.md) ·
-[developer-guide.md](developer-guide.md)
+[local-development.md](local-development.md)
 
 A five-to-seven minute walkthrough of the whole user journey — **upload → run →
 evidence → compare → review** — completable entirely in the UI, no internal tools.

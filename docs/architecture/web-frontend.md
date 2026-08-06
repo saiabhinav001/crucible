@@ -2,7 +2,7 @@
 
 Status: Phase 7 · Related: [c4-context.md](c4-context.md) ·
 [product-tour.md](../operations/product-tour.md) ·
-[developer-guide.md](../operations/developer-guide.md)
+[local-development.md](../operations/local-development.md)
 
 The web app (`apps/web`) is the product surface: it makes the platform legible to
 users and reviewers without any internal tooling. It is a Next.js App Router app

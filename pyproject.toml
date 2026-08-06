@@ -1,8 +1,10 @@
 [project]
 name = "crucible-workspace"
-version = "0.1.0"
+version = "1.0.0"
 description = "Crucible monorepo workspace root (virtual; see packages/ and apps/)"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "crucible-domain",
     "crucible-application",

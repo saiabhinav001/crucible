@@ -1,10 +1,38 @@
 # Changelog
 
 All notable changes to Crucible. Dates are the phase-completion dates.
-Format follows [Keep a Changelog](https://keepachangelog.com/); the project is
-pre-1.0 and versioned by phase until the v1.0.0 release.
+Format follows [Keep a Changelog](https://keepachangelog.com/) and the project
+follows [Semantic Versioning](https://semver.org/) from v1.0.0 onward.
 
-## [Unreleased] — Phase 10: Private beta deployment & reliability operations — 2026-07-21
+## [1.0.0] — 2026-08-06
+
+First tagged release. Packages Phases 0–10 into a reproducible, honestly-scoped
+v1 under the **Apache-2.0** license. See the
+[v1.0.0 release report](docs/release/v1.0.0.md) for the measured evidence.
+
+### Added
+- **License & governance.** Apache-2.0 `LICENSE` + `NOTICE`; `CODE_OF_CONDUCT.md`
+  (Contributor Covenant 2.1); GitHub issue templates and a pull-request template
+  mirroring the shared code-review checklist.
+- **Release documentation.** [v1.0.0 release report](docs/release/v1.0.0.md)
+  (measured results only), a README documentation index, an explicit
+  **Non-goals & limitations** section, and a top-level local quickstart +
+  reproduction guide.
+- **Maintenance cadence.** [docs/operations/maintenance-cadence.md](docs/operations/maintenance-cadence.md)
+  — issue triage, dependency/security update cadence, and release process.
+
+### Changed
+- Web app degrades gracefully on a stale/missing API key or unreachable API
+  (friendly setup state instead of a crash) and adds a route error boundary;
+  `<body suppressHydrationWarning>` silences browser-extension hydration noise.
+- Workspace version set to `1.0.0`; README reframed from "Phase 10 complete" to
+  the v1.0.0 release.
+
+### Security
+- Dependency CVE fixes carried in: `cryptography` → 50, `next` → 15.5.22,
+  `postcss`/`sharp`/`js-yaml` pinned to fixed versions.
+
+## [Phase 10] — Private beta deployment & reliability operations — 2026-07-21
 
 ### Added
 - **Beta allowlist / org lifecycle.** Organizations carry a `status`
