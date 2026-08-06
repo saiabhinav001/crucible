@@ -534,7 +534,7 @@ dependencies = [
 requires-dist = [
     { name = "argon2-cffi", specifier = ">=23.1,<26" },
     { name = "crucible-domain", editable = "packages/domain" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.13.0,<3" },
     { name = "redis", specifier = ">=5.2,<7" },
 ]
 
