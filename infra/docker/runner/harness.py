@@ -133,19 +133,18 @@ def main() -> int:
     result_bytes = os.path.getsize(RESULT_PATH) if result_present else 0
 
     # The untrusted program runs under umask 0o077, so result.json and any
-    # artifacts are mode 0600 owned by this container UID. The host reads them
-    # back after the container exits and, on a native-Linux host, runs as a
-    # different UID — so make them readable. This harness owns the files (same
-    # UID) and does it here, before exit. It is host read-back only: the
-    # container is ephemeral and destroyed after the run, so these file modes
-    # carry no security weight (containment is enforced by the container).
-    for dirpath, dirnames, filenames in os.walk(RESULTS_DIR):
-        for name in dirnames:
+    # artifacts are mode 0600 owned by this container UID. The host reads only
+    # the top-level files back (subdirectories are not part of the contract —
+    # see parser.collect_results) after the container exits, and on a
+    # native-Linux host runs as a different UID — so make those files readable.
+    # This harness owns them (same UID). Host read-back only: the container is
+    # ephemeral and destroyed after the run, so these modes carry no security
+    # weight (containment is enforced by the container). Regular files only, so
+    # a program-created symlink is never chmod-ed through to its target.
+    for entry in os.scandir(RESULTS_DIR):
+        if entry.is_file(follow_symlinks=False):
             with contextlib.suppress(OSError):
-                os.chmod(os.path.join(dirpath, name), 0o755)
-        for name in filenames:
-            with contextlib.suppress(OSError):
-                os.chmod(os.path.join(dirpath, name), 0o644)
+                os.chmod(entry.path, 0o644)
 
     _write_manifest(
         {
