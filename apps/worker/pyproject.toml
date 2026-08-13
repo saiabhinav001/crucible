@@ -5,7 +5,7 @@ description = "Async job consumer (arq): dataset profiling, durable runs, sandbo
 requires-python = ">=3.12"
 dependencies = [
     "arq>=0.26,<1",
-    "pydantic-settings>=2.6,<3",
+    "pydantic-settings>=2.15.0,<3",
     "crucible-domain",
     "crucible-application",
     "crucible-db",

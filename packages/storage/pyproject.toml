@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Object-storage adapter (S3-compatible: MinIO locally, GCS/S3 in cloud)."
 requires-python = ">=3.12"
 dependencies = [
-    "boto3>=1.35,<2",
+    "boto3>=1.43.67,<2",
     "polars>=1.17,<2",
     "crucible-domain",
 ]
