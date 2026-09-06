@@ -5,7 +5,7 @@ description = "Authn/authz helpers: API-key hashing, OIDC JWT verification, rate
 requires-python = ">=3.12"
 dependencies = [
     "argon2-cffi>=23.1,<26",
-    "pyjwt[crypto]>=2.10,<3",
+    "pyjwt[crypto]>=2.13.0,<3",
     "redis>=5.2,<7",
     "crucible-domain",
 ]
